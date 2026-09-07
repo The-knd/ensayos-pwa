@@ -36,7 +36,12 @@ export class PasskeyAuthStrategy implements AuthStrategy {
     });
   }
 
-  async verifyRegistration(userId: string, response: any, expectedChallenge: string) {
+  async verifyRegistration(
+    userId: string,
+    response: any,
+    expectedChallenge: string,
+    deviceName?: string,
+  ) {
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge,
@@ -53,9 +58,11 @@ export class PasskeyAuthStrategy implements AuthStrategy {
     await this.deviceRepo.save(
       this.deviceRepo.create({
         userId,
-        credentialId: Buffer.from(credentialID).toString('base64url'),
+        // @simplewebauthn/server v10 devuelve credentialID como Base64URLString
+        credentialId: credentialID,
         publicKey: Buffer.from(credentialPublicKey).toString('base64url'),
         counter,
+        deviceName: deviceName ? deviceName.slice(0, 120) : null,
       }),
     );
 
@@ -63,8 +70,8 @@ export class PasskeyAuthStrategy implements AuthStrategy {
   }
 
   async getAuthenticationOptions(email: string, companyId: string) {
-    const user = await this.userRepo.findOneOrFail({ where: { email, companyId } });
-    const devices = await this.deviceRepo.find({ where: { userId: user.id } });
+    const user = await this.userRepo.findOne({ where: { email, companyId } });
+    const devices = user ? await this.deviceRepo.find({ where: { userId: user.id } }) : [];
 
     return generateAuthenticationOptions({
       rpID: this.config.get('WEBAUTHN_RP_ID')!,
@@ -76,12 +83,16 @@ export class PasskeyAuthStrategy implements AuthStrategy {
     credentials: { response: any; expectedChallenge: string; email: string },
     companyId: string,
   ): Promise<AuthResult> {
-    const user = await this.userRepo.findOneOrFail({
+    const user = await this.userRepo.findOne({
       where: { email: credentials.email, companyId },
     });
-    const device = await this.deviceRepo.findOneOrFail({
-      where: { credentialId: credentials.response.id },
-    });
+    const device = user
+      ? await this.deviceRepo.findOne({
+          where: { credentialId: credentials.response.id, userId: user.id },
+        })
+      : null;
+
+    if (!user || !device) throw new UnauthorizedException('Passkey inválida');
 
     const verification = await verifyAuthenticationResponse({
       response: credentials.response,

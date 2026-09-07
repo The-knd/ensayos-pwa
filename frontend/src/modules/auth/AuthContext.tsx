@@ -3,7 +3,8 @@ import { httpClient } from '../../shared/api/httpClient';
 
 interface BootstrapData {
   user: { id: string; name: string; email: string };
-  company: { id: string; theme: { primaryColor: string; logoUrl: string } };
+  company: { id: string; name: string; theme: { primaryColor: string; logoUrl: string } };
+  featureFlags: Record<string, boolean>;
 }
 
 interface ModuleContext {
@@ -15,6 +16,9 @@ interface AuthContextValue {
   bootstrap: BootstrapData | null;
   moduleContexts: Record<string, ModuleContext>;
   loadModuleContext: (moduleName: string) => Promise<void>;
+  refreshBootstrap: () => Promise<void>;
+  resetModuleContexts: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -75,8 +79,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setModuleContexts((prev) => ({ ...prev, [moduleName]: res.data }));
   };
 
+  const refreshBootstrap = async () => {
+    const res = await httpClient.get('/me/bootstrap');
+    setBootstrap(res.data);
+  };
+
+  const resetModuleContexts = () => setModuleContexts({});
+
+  const logout = async () => {
+    try {
+      await httpClient.post('/auth/logout');
+    } catch {
+      // el cierre local de sesión no debe fallar aunque el servidor no responda
+    }
+    setBootstrap(null);
+    setModuleContexts({});
+  };
+
   return (
-    <AuthContext.Provider value={{ bootstrap, moduleContexts, loadModuleContext, isLoading }}>
+    <AuthContext.Provider
+      value={{ bootstrap, moduleContexts, loadModuleContext, refreshBootstrap, resetModuleContexts, logout, isLoading }}
+    >
       {children}
     </AuthContext.Provider>
   );

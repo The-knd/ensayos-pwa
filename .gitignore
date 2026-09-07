@@ -60,6 +60,9 @@ coverage/
 docker-data/
 docker-volumes/
 
+# Uploads de logos generados en runtime
+backend/uploads/
+
 # Local compose overrides
 docker-compose.override.yml
 

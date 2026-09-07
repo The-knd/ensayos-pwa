@@ -1,8 +1,9 @@
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, OneToOne } from 'typeorm';
 import { BaseEntity } from '../../../commons/entities/base.entity';
 import { Company } from '../../config/entities/company.entity';
 import { ClientDirection } from './client-direction.entity';
 import { ClientReference } from './client-reference.entity';
+import { ClientTaxSettings } from './client-tax.entity';
 
 export enum ClientStatus {
   ACTIVE = 'active',
@@ -158,4 +159,7 @@ export class Client extends BaseEntity {
 
   @OneToMany(() => ClientReference, (r) => r.client, { cascade: true })
   references: ClientReference[];
+
+  @OneToOne(() => ClientTaxSettings, (t) => t.client, { cascade: true })
+  taxSettings: ClientTaxSettings;
 }

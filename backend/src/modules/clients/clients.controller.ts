@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
 import { Permissions } from '../../commons/decorators/permissions.decorator';
@@ -58,5 +58,11 @@ export class ClientsController {
   @Permissions('clients.update')
   toggleStatus(@Param('id') id: string, @CurrentTenant() companyId: string) {
     return this.service.toggleStatus(id, companyId);
+  }
+
+  @Delete(':id')
+  @Permissions('clients.delete')
+  remove(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.service.remove(id, companyId);
   }
 }

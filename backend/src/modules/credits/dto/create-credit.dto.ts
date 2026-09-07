@@ -1,10 +1,12 @@
-import { IsString, IsNumber, IsPositive } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsNumber, IsPositive, IsUUID } from 'class-validator';
 
 export class CreateCreditDto {
-  @IsString()
+  @IsUUID()
   clientId: string;
 
   @IsNumber()
   @IsPositive()
+  @Type(() => Number)
   requestedAmount: number;
 }

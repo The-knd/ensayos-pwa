@@ -25,4 +25,7 @@ export class Company extends BaseEntity {
     default: AuthStrategyType.LOCAL,
   })
   authStrategy: AuthStrategyType;
+
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
 }

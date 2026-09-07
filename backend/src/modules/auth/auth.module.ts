@@ -13,6 +13,7 @@ import { Company } from '../config/entities/company.entity';
 import { Device } from './entities/device.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { RbacModule } from '../rbac/rbac.module';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
@@ -20,6 +21,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     TypeOrmModule.forFeature([User, Company, Device, RefreshToken]),
     PassportModule,
     RbacModule,
+    FeatureFlagsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

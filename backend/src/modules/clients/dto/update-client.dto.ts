@@ -20,6 +20,34 @@ export class UpdateClientDto {
   @IsOptional()
   email?: string;
 
+  @IsEmail()
+  @IsOptional()
+  billingEmail?: string;
+
+  @IsEmail()
+  @IsOptional()
+  treasuryEmail?: string;
+
+  @IsString()
+  @IsOptional()
+  commercialName?: string;
+
+  @IsString()
+  @IsOptional()
+  legalName?: string;
+
+  @IsString()
+  @IsOptional()
+  establishmentVocation?: string;
+
+  @IsString()
+  @IsOptional()
+  establishmentSize?: string;
+
+  @IsString()
+  @IsOptional()
+  serviceType?: string;
+
   @IsEnum(ClientStatus)
   @IsOptional()
   status?: ClientStatus;

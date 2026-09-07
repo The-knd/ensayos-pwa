@@ -19,10 +19,23 @@ export function ClientsListPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const ctx = moduleContexts['clients'];
 
+  const reload = () => {
+    httpClient.get('/clients').then((res) => setClients(res.data[0]));
+  };
+
+  const toggleStatus = async (c: Client) => {
+    await httpClient.patch(`/clients/${c.id}/status`, { status: c.status === 'active' ? 'inactive' : 'active' });
+    reload();
+  };
+
+  const remove = async (c: Client) => {
+    if (!window.confirm(`¿Eliminar el cliente "${c.fullName}"? Esta acción no se puede deshacer.`)) return;
+    await httpClient.delete(`/clients/${c.id}`);
+    reload();
+  };
+
   useEffect(() => {
-    loadModuleContext('clients').then(() => {
-      httpClient.get('/clients').then((res) => setClients(res.data[0]));
-    });
+    loadModuleContext('clients').then(reload);
   }, []);
 
   if (!ctx) return <p style={{ padding: 40 }}>Cargando...</p>;
@@ -56,11 +69,18 @@ export function ClientsListPage() {
                 <td style={{ padding: 12 }}>{c.status}</td>
                 <td style={{ padding: 12 }}>
                   <Can permission="clients.update" permissions={ctx.permissions}>
-                    <button style={{ marginRight: 8 }}>Editar</button>
-                    <button>Activar/Desactivar</button>
+                    <button style={{ marginRight: 8, cursor: 'pointer' }} onClick={() => navigate(`/clients/${c.id}/edit`)}>Editar</button>
+                    <button style={{ cursor: 'pointer' }} onClick={() => toggleStatus(c)}>
+                      {c.status === 'active' ? 'Desactivar' : 'Activar'}
+                    </button>
                   </Can>
                   <Can permission="clients.delete" permissions={ctx.permissions}>
-                    <button style={{ marginLeft: 8 }}>Eliminar</button>
+                    <button
+                      style={{ marginLeft: 8, cursor: 'pointer', color: '#c62828' }}
+                      onClick={() => remove(c)}
+                    >
+                      Eliminar
+                    </button>
                   </Can>
                 </td>
               </tr>

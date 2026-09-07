@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { createReadStream, existsSync } from 'fs';
 import { join } from 'path';
 
-const UPLOADS_DIR = join(process.cwd(), 'uploads');
+const LOGOS_DIR = join(process.cwd(), 'uploads', 'logos');
 
 @Controller('uploads')
 export class UploadsController {
@@ -12,7 +12,7 @@ export class UploadsController {
     if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
       throw new NotFoundException('Archivo no encontrado');
     }
-    const filePath = join(UPLOADS_DIR, filename);
+    const filePath = join(LOGOS_DIR, filename);
     if (!existsSync(filePath)) {
       throw new NotFoundException('Archivo no encontrado');
     }

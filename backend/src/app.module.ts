@@ -1,4 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -15,6 +16,7 @@ import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.mi
 import { envValidationSchema } from './commons/config/env.validation';
 import { EVENT_BUS } from './commons/interfaces/event-bus.interface';
 import { InMemoryEventBus } from './commons/infrastructure/in-memory-event-bus';
+import { TenantContextInterceptor } from './commons/interceptors/tenant-context.interceptor';
 
 @Module({
   imports: [
@@ -48,6 +50,10 @@ import { InMemoryEventBus } from './commons/infrastructure/in-memory-event-bus';
     HealthModule,
   ],
   providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
+    },
     {
       provide: EVENT_BUS,
       useClass: InMemoryEventBus,

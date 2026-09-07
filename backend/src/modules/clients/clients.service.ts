@@ -81,7 +81,12 @@ export class ClientsService {
         );
       }
 
-      return this.findOne(client.id, companyId);
+      const created = await manager.getRepository(Client).findOne({
+        where: { id: client.id, companyId },
+        relations: ['directions', 'references'],
+      });
+      if (!created) throw new NotFoundException();
+      return created;
     });
   }
 
@@ -97,5 +102,18 @@ export class ClientsService {
     if (!client) throw new NotFoundException();
     client.status = client.status === ClientStatus.ACTIVE ? ClientStatus.INACTIVE : ClientStatus.ACTIVE;
     return this.repo.save(client);
+  }
+
+  async remove(id: string, companyId: string) {
+    const client = await this.repo.findOne({ where: { id, companyId } });
+    if (!client) throw new NotFoundException();
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(ClientDirection).softDelete({ clientId: id, companyId });
+      await manager.getRepository(ClientReference).softDelete({ clientId: id, companyId });
+      await manager.getRepository(Client).softDelete({ id, companyId });
+    });
+
+    return { success: true };
   }
 }

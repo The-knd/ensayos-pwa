@@ -20,6 +20,6 @@ export class Device extends BaseEntity {
   @Column({ type: 'int', default: 0 })
   counter: number;
 
-  @Column({ name: 'device_name', nullable: true })
-  deviceName: string;
+  @Column({ name: 'device_name', type: 'varchar', nullable: true })
+  deviceName: string | null;
 }

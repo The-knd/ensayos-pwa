@@ -11,7 +11,9 @@ export class TenantContextInterceptor implements NestInterceptor {
     const companyId = request.user?.companyId;
 
     if (companyId) {
-      await this.dataSource.query(`SET app.current_company_id = '${companyId}'`);
+      await this.dataSource.query(`SELECT set_config('app.current_company_id', $1, false)`, [
+        companyId,
+      ]);
     }
 
     return next.handle();

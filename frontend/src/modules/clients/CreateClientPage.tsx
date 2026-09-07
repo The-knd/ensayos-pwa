@@ -64,22 +64,25 @@ export function CreateClientPage() {
   ]);
   const [cancelRef, setCancelRef] = useState<string | null>(null);
   const [accept, setAccept] = useState(false);
+  const [error, setError] = useState('');
 
   const set = (key: string, value: any) => setForm((prev) => ({ ...prev, [key]: value }));
   const bool = (key: string) => (v: string) => set(key, v === 'si');
 
   async function handleSubmit() {
-    if (!accept) return;
+    setError('');
+    if (!accept) { setError('Debe aceptar el tratamiento de datos'); return; }
     const fullName =
       form.fullName ||
       (personType === 'juridica'
         ? form.legalName || [form.repFirstName, form.repFirstLastName].filter(Boolean).join(' ')
         : [form.firstName, form.firstLastName].filter(Boolean).join(' ')) ||
       form.commercialName;
-    if (!fullName) return;
+    if (!fullName) { setError('El nombre completo es obligatorio'); return; }
+    if (!form.documentNumber) { setError('El número de documento es obligatorio'); return; }
     const payload = {
       ...form,
-      phone: form.phone || form.cellphone,
+      phone: form.phone || '',
       fullName,
       documentNumber: form.documentNumber,
       personType: personType || undefined,
@@ -91,20 +94,27 @@ export function CreateClientPage() {
         .filter((r) => r.entity || r.built)
         .map((r) => ({ ...r, address: r.built })),
     };
-    await httpClient.post('/clients', payload);
-    navigate('/clients');
+    try {
+      await httpClient.post('/clients', payload);
+      navigate('/clients');
+    } catch (err: any) {
+      setError(err?.response?.data?.message?.message || 'No se pudo crear el cliente');
+    }
   }
 
   return (
     <div className="s2">
-      <div className="appbar">
-        <div className="abk" onClick={() => navigate('/clients')}>
-          <svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <div className="s2-head">
+        <div className="s2-top">
+          <div className="cback" onClick={() => navigate('/clients')}>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </div>
+          <div className="org-chip"><span className="org-dot" />Clientes</div>
         </div>
-        <div className="abtitle"><h2>Creación de clientes</h2></div>
+        <h1 className="page-title">Crear cliente</h1>
       </div>
 
-      <div className="body">
+      <div className="s2-body">
         <div className="note">
           <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" /><path d="M12 8v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="16.5" r="1" fill="currentColor" /></svg>
           <p>La información debe coincidir con el documento de registro y diligenciarse en MAYÚSCULA, excepto los correos.</p>
@@ -112,44 +122,54 @@ export function CreateClientPage() {
 
         <button className="btn btn-primary" style={{ marginBottom: 16 }} type="button">Vinculación de cliente</button>
 
-        <div className="sel">
-          <select value={personType} onChange={(e) => setPersonType(e.target.value)}>
-            <option value="">* Seleccione el tipo de persona</option>
-            <option value="natural">Natural</option>
-            <option value="juridica">Jurídica</option>
-          </select>
-          <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <div className="field">
+          <label>Tipo de persona</label>
+          <div className="sel">
+            <select value={personType} onChange={(e) => setPersonType(e.target.value)}>
+              <option value="">* Seleccione el tipo de persona</option>
+              <option value="natural">Natural</option>
+              <option value="juridica">Jurídica</option>
+            </select>
+            <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </div>
         </div>
 
         {personType && (
           <>
             <div className="sec">Datos del documento</div>
 
-            <div className="sel">
-              <select value={form.documentType || ''} onChange={(e) => set('documentType', e.target.value)}>
-                <option value="">* Seleccione el tipo de documento</option>
-                <option value="nit">NIT</option>
-                <option value="cc">Cédula de Ciudadanía</option>
-                <option value="ce">Cédula de Extranjería</option>
-                <option value="pp">Permiso de Protección</option>
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <div className="field">
+              <label>Tipo de documento</label>
+              <div className="sel">
+                <select value={form.documentType || ''} onChange={(e) => set('documentType', e.target.value)}>
+                  <option value="">* Seleccione el tipo de documento</option>
+                  <option value="nit">NIT</option>
+                  <option value="cc">Cédula de Ciudadanía</option>
+                  <option value="ce">Cédula de Extranjería</option>
+                  <option value="pp">Permiso de Protección</option>
+                </select>
+                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
             </div>
 
-            <div className="field">
-              <input className="inp" placeholder="* Número de documento" value={form.documentNumber || ''} onChange={(e) => set('documentNumber', e.target.value)} maxLength={19} />
-              <span className="cap">{form.documentNumber?.length || 0}/19</span>
-            </div>
-
-            <div className="field">
-              <input className="inp" placeholder="DV" value="0" readOnly />
-              <span className="cap">DV autogenerado</span>
+            <div className="row2">
+              <div className="field" style={{ flex: 2 }}>
+                <label>Número de documento</label>
+                <input className="inp" placeholder="* Número de documento" value={form.documentNumber || ''} onChange={(e) => set('documentNumber', e.target.value)} maxLength={19} />
+              </div>
+              <div className="field" style={{ flex: 1 }}>
+                <label>DV</label>
+                <input className="inp" placeholder="DV" value="0" readOnly />
+              </div>
             </div>
 
             {personType === 'natural' && (
               <>
                 <div className="sec">Datos personales</div>
-                <div className="field"><input className="inp" placeholder="* Razón comercial" value={form.commercialName || ''} onChange={(e) => set('commercialName', e.target.value)} /></div>
+                <div className="field">
+                  <label>Razón comercial</label>
+                  <input className="inp" placeholder="* Razón comercial" value={form.commercialName || ''} onChange={(e) => set('commercialName', e.target.value)} />
+                </div>
                 <div className="row2">
                   <div className="field"><input className="inp" placeholder="* Primer nombre" value={form.firstName || ''} onChange={(e) => set('firstName', e.target.value)} /></div>
                   <div className="field"><input className="inp" placeholder="Segundo nombre" value={form.secondName || ''} onChange={(e) => set('secondName', e.target.value)} /></div>
@@ -177,18 +197,41 @@ export function CreateClientPage() {
               </>
             )}
 
+            <div className="sec">Contacto</div>
+            <div className="row2">
+              <div className="field"><input className="inp" type="email" placeholder="Email general" value={form.email || ''} onChange={(e) => set('email', e.target.value)} /></div>
+              <div className="field"><input className="inp" placeholder="Celular" value={form.cellphone || ''} onChange={(e) => set('cellphone', e.target.value)} /></div>
+            </div>
+            <div className="row2">
+              <div className="field" style={{ flex: '0 0 110px' }}>
+                <div className="sel">
+                  <select value={form.phonePrefix || ''} onChange={(e) => set('phonePrefix', e.target.value)}>
+                    <option value="">Ind.</option>
+                    {INDICATIVOS.map((i) => <option key={i} value={i}>{i}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+              </div>
+              <div className="field" style={{ flex: 1 }}>
+                <input className="inp" placeholder="Teléfono fijo" value={form.phone || ''} onChange={(e) => set('phone', e.target.value)} />
+              </div>
+            </div>
+
             <div className="sec">Actividad económica</div>
-            <div className="sel">
-              <select value={form.economicActivityCode || ''} onChange={(e) => {
-                const code = e.target.value;
-                const found = ACTIVIDADES.find(([c]) => c === code);
-                set('economicActivityCode', code);
-                set('economicActivityDescription', found ? found[1] : '');
-              }}>
-                <option value="">* Seleccione código de actividad económica</option>
-                {ACTIVIDADES.map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <div className="field">
+              <label>Código CIIU</label>
+              <div className="sel">
+                <select value={form.economicActivityCode || ''} onChange={(e) => {
+                  const code = e.target.value;
+                  const found = ACTIVIDADES.find(([c]) => c === code);
+                  set('economicActivityCode', code);
+                  set('economicActivityDescription', found ? found[1] : '');
+                }}>
+                  <option value="">* Seleccione código de actividad económica</option>
+                  {ACTIVIDADES.map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}
+                </select>
+                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
             </div>
 
             <div className="sec">Dirección principal (RUT)</div>
@@ -197,42 +240,38 @@ export function CreateClientPage() {
               onOpen={() => setAddrModal('principal')}
               onApply={(a) => setPrincipal((p) => ({ ...p, built: a }))}
             />
-            <div className="sel">
-              <select value={principal.department} onChange={(e) => setPrincipal((p) => ({ ...p, department: e.target.value }))}>
-                <option value="">* Departamento</option>
-                {DEPARTAMENTOS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-            <div className="sel">
-              <select value={principal.city} onChange={(e) => setPrincipal((p) => ({ ...p, city: e.target.value }))}>
-                <option value="">* Ciudad</option>
-                {CIUDADES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-            <div className="sel">
-              <select value={principal.postalCode} onChange={(e) => setPrincipal((p) => ({ ...p, postalCode: e.target.value }))}>
-                <option value="">* Código postal</option>
-                {ciudadesPostal().map(([c, cp]) => <option key={c} value={cp}>{cp} - {c}</option>)}
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-
-            <div className="sec">Contacto</div>
             <div className="row2">
-              <div className="sel" style={{ flex: '0 0 100px' }}>
-                <select value={form.phonePrefix || ''} onChange={(e) => set('phonePrefix', e.target.value)}>
-                  <option value="">Ind.</option>
-                  {INDICATIVOS.map((i) => <option key={i} value={i}>{i}</option>)}
-                </select>
-                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <div className="field">
+                <label>Departamento</label>
+                <div className="sel">
+                  <select value={principal.department} onChange={(e) => setPrincipal((p) => ({ ...p, department: e.target.value }))}>
+                    <option value="">* Departamento</option>
+                    {DEPARTAMENTOS.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
               </div>
-              <div className="field" style={{ flex: 1 }}>
-                <input className="inp" placeholder="Teléfono fijo (no obligatorio)" value={form.phone || ''} onChange={(e) => set('phone', e.target.value)} />
+              <div className="field">
+                <label>Ciudad</label>
+                <div className="sel">
+                  <select value={principal.city} onChange={(e) => setPrincipal((p) => ({ ...p, city: e.target.value }))}>
+                    <option value="">* Ciudad</option>
+                    {CIUDADES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
               </div>
             </div>
-            <div className="field"><input className="inp" placeholder="* Celular" value={form.cellphone || ''} onChange={(e) => set('cellphone', e.target.value)} /></div>
+            <div className="field">
+              <label>Código postal</label>
+              <div className="sel">
+                <select value={principal.postalCode} onChange={(e) => setPrincipal((p) => ({ ...p, postalCode: e.target.value }))}>
+                  <option value="">* Código postal</option>
+                  {ciudadesPostal().map(([c, cp]) => <option key={c} value={cp}>{cp} - {c}</option>)}
+                </select>
+                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
+            </div>
 
             <div className="sec">Dirección de despacho</div>
             <div className="sec-sub">Nombre del contacto</div>
@@ -253,27 +292,37 @@ export function CreateClientPage() {
             <div className="field">
               <textarea className="inp ta" placeholder="Descripción de la dirección (ej: Casa de dos pisos, portón rojo)" value={despacho.description || ''} onChange={(e) => setDespacho((d) => ({ ...d, description: e.target.value }))} />
             </div>
-            <div className="sel">
-              <select value={despacho.department} onChange={(e) => setDespacho((d) => ({ ...d, department: e.target.value }))}>
-                <option value="">* Departamento</option>
-                {DEPARTAMENTOS.map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-            <div className="sel">
-              <select value={despacho.city} onChange={(e) => setDespacho((d) => ({ ...d, city: e.target.value }))}>
-                <option value="">* Ciudad</option>
-                {CIUDADES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <div className="row2">
+              <div className="field">
+                <label>Departamento</label>
+                <div className="sel">
+                  <select value={despacho.department} onChange={(e) => setDespacho((d) => ({ ...d, department: e.target.value }))}>
+                    <option value="">* Departamento</option>
+                    {DEPARTAMENTOS.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+              </div>
+              <div className="field">
+                <label>Ciudad</label>
+                <div className="sel">
+                  <select value={despacho.city} onChange={(e) => setDespacho((d) => ({ ...d, city: e.target.value }))}>
+                    <option value="">* Ciudad</option>
+                    {CIUDADES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+              </div>
             </div>
             <div className="row2">
-              <div className="sel" style={{ flex: '0 0 100px' }}>
-                <select value={despacho.phonePrefix || ''} onChange={(e) => setDespacho((d) => ({ ...d, phonePrefix: e.target.value }))}>
-                  <option value="">Ind.</option>
-                  {INDICATIVOS.map((i) => <option key={i} value={i}>{i}</option>)}
-                </select>
-                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <div className="field" style={{ flex: '0 0 110px' }}>
+                <div className="sel">
+                  <select value={despacho.phonePrefix || ''} onChange={(e) => setDespacho((d) => ({ ...d, phonePrefix: e.target.value }))}>
+                    <option value="">Ind.</option>
+                    {INDICATIVOS.map((i) => <option key={i} value={i}>{i}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <input className="inp" placeholder="Teléfono" value={despacho.phone || ''} onChange={(e) => setDespacho((d) => ({ ...d, phone: e.target.value }))} />
@@ -281,44 +330,55 @@ export function CreateClientPage() {
             </div>
 
             <div className="sec">Información comercial</div>
-            <div className="sel">
-              <select value={form.establishmentVocation || ''} onChange={(e) => set('establishmentVocation', e.target.value)}>
-                <option value="">* Vocación del establecimiento</option>
-                <option value="almacen-agricola">Almacén agrícola</option>
-                <option value="almacen-agricola-ferreteria">Almacén agrícola / Ferretería</option>
-                <option value="ferroelectrico">Ferroeléctrico</option>
-                <option value="ferreteria">Ferretería</option>
-                <option value="miscelanea">Miscelánea</option>
-                <option value="viveros">Viveros</option>
-                <option value="distribucion-pdv">Distribución punto de venta</option>
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-            <div className="sel">
-              <select value={form.establishmentSize || ''} onChange={(e) => set('establishmentSize', e.target.value)}>
-                <option value="">* Tamaño del establecimiento</option>
-                <option value="hasta-50">Hasta 50 m²</option>
-                <option value="50-100">50 – 100 m²</option>
-                <option value="100-200">100 – 200 m²</option>
-                <option value="mas-200">Más de 200 m²</option>
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-            <div className="sel">
-              <select value={form.serviceType || ''} onChange={(e) => set('serviceType', e.target.value)}>
-                <option value="">* Tipo de atención</option>
-                <option value="mostrador">Mostrador</option>
-                <option value="autoservicio">Autoservicio</option>
-                <option value="mixto">Mixto</option>
-                <option value="bodega">Bodega</option>
-              </select>
-              <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <div className="field">
+              <label>Vocación del establecimiento</label>
+              <div className="sel">
+                <select value={form.establishmentVocation || ''} onChange={(e) => set('establishmentVocation', e.target.value)}>
+                  <option value="">* Vocación del establecimiento</option>
+                  <option value="almacen-agricola">Almacén agrícola</option>
+                  <option value="almacen-agricola-ferreteria">Almacén agrícola / Ferretería</option>
+                  <option value="ferroelectrico">Ferroeléctrico</option>
+                  <option value="ferreteria">Ferretería</option>
+                  <option value="miscelanea">Miscelánea</option>
+                  <option value="viveros">Viveros</option>
+                  <option value="distribucion-pdv">Distribución punto de venta</option>
+                </select>
+                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
             </div>
             <div className="field">
-              <input className="inp" type="email" placeholder="* Email facturación electrónica" value={form.billingEmail || ''} onChange={(e) => set('billingEmail', e.target.value)} />
+              <label>Tamaño del establecimiento</label>
+              <div className="sel">
+                <select value={form.establishmentSize || ''} onChange={(e) => set('establishmentSize', e.target.value)}>
+                  <option value="">* Tamaño del establecimiento</option>
+                  <option value="hasta-50">Hasta 50 m²</option>
+                  <option value="50-100">50 – 100 m²</option>
+                  <option value="100-200">100 – 200 m²</option>
+                  <option value="mas-200">Más de 200 m²</option>
+                </select>
+                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
             </div>
             <div className="field">
-              <input className="inp" type="email" placeholder="Email tesorería y contabilidad" value={form.treasuryEmail || ''} onChange={(e) => set('treasuryEmail', e.target.value)} />
+              <label>Tipo de atención</label>
+              <div className="sel">
+                <select value={form.serviceType || ''} onChange={(e) => set('serviceType', e.target.value)}>
+                  <option value="">* Tipo de atención</option>
+                  <option value="mostrador">Mostrador</option>
+                  <option value="autoservicio">Autoservicio</option>
+                  <option value="mixto">Mixto</option>
+                  <option value="bodega">Bodega</option>
+                </select>
+                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
+            </div>
+            <div className="row2">
+              <div className="field">
+                <input className="inp" type="email" placeholder="* Email facturación electrónica" value={form.billingEmail || ''} onChange={(e) => set('billingEmail', e.target.value)} />
+              </div>
+              <div className="field">
+                <input className="inp" type="email" placeholder="Email tesorería y contabilidad" value={form.treasuryEmail || ''} onChange={(e) => set('treasuryEmail', e.target.value)} />
+              </div>
             </div>
 
             {personType === 'natural' && (
@@ -340,8 +400,8 @@ export function CreateClientPage() {
                     </div>
                     <div className="field"><input className="inp" placeholder="* Cargo o desempeño" value={form.publicOfficeCargo || ''} onChange={(e) => set('publicOfficeCargo', e.target.value)} /></div>
                     <div className="row2">
-                      <div className="field"><label className="f-label">Fecha inicio</label><input className="inp" type="date" value={form.publicOfficeStart || ''} onChange={(e) => set('publicOfficeStart', e.target.value)} /></div>
-                      <div className="field"><label className="f-label">Fecha fin</label><input className="inp" type="date" value={form.publicOfficeEnd || ''} onChange={(e) => set('publicOfficeEnd', e.target.value)} /></div>
+                      <div className="field"><label>Fecha inicio</label><input className="inp" type="date" value={form.publicOfficeStart || ''} onChange={(e) => set('publicOfficeStart', e.target.value)} /></div>
+                      <div className="field"><label>Fecha fin</label><input className="inp" type="date" value={form.publicOfficeEnd || ''} onChange={(e) => set('publicOfficeEnd', e.target.value)} /></div>
                     </div>
                   </>
                 )}
@@ -357,15 +417,17 @@ export function CreateClientPage() {
                   <>
                     <div className="field"><input className="inp" type="number" placeholder="* Número de operaciones al año" value={form.foreignTradeOpsPerYear || ''} onChange={(e) => set('foreignTradeOpsPerYear', e.target.value)} /></div>
                     <div className="sec-sub">Forma de pago</div>
-                    <div className="sel">
-                      <select value={form.paymentMethod || ''} onChange={(e) => set('paymentMethod', e.target.value)}>
-                        <option value="">* Seleccione forma de pago</option>
-                        <option value="transferencias">Transferencias</option>
-                        <option value="tc">Tarjeta de crédito</option>
-                        <option value="td">Tarjeta débito</option>
-                        <option value="otro">Otro</option>
-                      </select>
-                      <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    <div className="field">
+                      <div className="sel">
+                        <select value={form.paymentMethod || ''} onChange={(e) => set('paymentMethod', e.target.value)}>
+                          <option value="">* Seleccione forma de pago</option>
+                          <option value="transferencias">Transferencias</option>
+                          <option value="tc">Tarjeta de crédito</option>
+                          <option value="td">Tarjeta débito</option>
+                          <option value="otro">Otro</option>
+                        </select>
+                        <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </div>
                     </div>
                     {form.paymentMethod === 'otro' && (
                       <div className="field"><input className="inp" placeholder="Especifique la forma de pago" value={form.paymentMethodOther || ''} onChange={(e) => set('paymentMethodOther', e.target.value)} /></div>
@@ -394,7 +456,7 @@ export function CreateClientPage() {
 
             <div className="sec">Referencias comerciales</div>
             {references.map((ref, idx) => (
-              <div key={idx}>
+              <div key={idx} className="info-card" style={{ padding: 16, marginBottom: 12 }}>
                 <div className="sec-sub">Referencia {idx + 1}</div>
                 <div className="field"><input className="inp" placeholder="* Entidad" value={ref.entity} onChange={(e) => updateRef(idx, 'entity', e.target.value)} /></div>
                 <div className="field">
@@ -405,27 +467,35 @@ export function CreateClientPage() {
                     </button>
                   </div>
                 </div>
-                <div className="sel">
-                  <select value={ref.department} onChange={(e) => updateRef(idx, 'department', e.target.value)}>
-                    <option value="">* Departamento</option>
-                    {DEPARTAMENTOS.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                </div>
-                <div className="sel">
-                  <select value={ref.city} onChange={(e) => updateRef(idx, 'city', e.target.value)}>
-                    <option value="">* Ciudad</option>
-                    {CIUDADES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <div className="row2">
+                  <div className="field">
+                    <div className="sel">
+                      <select value={ref.department} onChange={(e) => updateRef(idx, 'department', e.target.value)}>
+                        <option value="">* Departamento</option>
+                        {DEPARTAMENTOS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <div className="sel">
+                      <select value={ref.city} onChange={(e) => updateRef(idx, 'city', e.target.value)}>
+                        <option value="">* Ciudad</option>
+                        {CIUDADES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
+                  </div>
                 </div>
                 <div className="row2">
-                  <div className="sel" style={{ flex: '0 0 100px' }}>
-                    <select value={ref.phonePrefix || ''} onChange={(e) => updateRef(idx, 'phonePrefix', e.target.value)}>
-                      <option value="">Ind.</option>
-                      {INDICATIVOS.map((i) => <option key={i} value={i}>{i}</option>)}
-                    </select>
-                    <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <div className="field" style={{ flex: '0 0 110px' }}>
+                    <div className="sel">
+                      <select value={ref.phonePrefix || ''} onChange={(e) => updateRef(idx, 'phonePrefix', e.target.value)}>
+                        <option value="">Ind.</option>
+                        {INDICATIVOS.map((i) => <option key={i} value={i}>{i}</option>)}
+                      </select>
+                      <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
                   </div>
                   <div className="field" style={{ flex: 1 }}><input className="inp" placeholder="Teléfono" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} /></div>
                 </div>
@@ -438,6 +508,8 @@ export function CreateClientPage() {
               <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
               <span>Acepta el tratamiento de datos personales de acuerdo con la política de protección de datos de S.A.S.</span>
             </label>
+
+            {error && <p className="error-msg">{error}</p>}
 
             <div className="rowbtn">
               <button className="btn btn-ghost" onClick={() => navigate('/clients')}>Cancelar</button>

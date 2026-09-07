@@ -1,26 +1,73 @@
+import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { httpClient } from '../../shared/api/httpClient';
-import { Header } from '../../shared/components/Header';
-import { Footer } from '../../shared/components/Footer';
-import { useNavigate } from 'react-router-dom';
+import { startRegistration } from '@simplewebauthn/browser';
+
+interface Device {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 
 export function ProfilePage() {
-  const { bootstrap } = useAuth();
-  const navigate = useNavigate();
+  const { bootstrap, logout } = useAuth();
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [deviceName, setDeviceName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
 
   const name = bootstrap?.user.name || '';
   const email = bootstrap?.user.email || '';
-  const companyId = bootstrap?.company.id || '';
+  const companyName = bootstrap?.company.name || '';
 
-  const logout = async () => {
-    await httpClient.post('/auth/logout');
-    navigate('/login');
+  const loadDevices = () => {
+    httpClient
+      .get('/auth/passkeys')
+      .then((res) => setDevices(res.data || []))
+      .catch(() => setDevices([]));
+  };
+
+  useEffect(loadDevices, []);
+
+  const registerDevice = async () => {
+    setBusy(true);
+    setMsg('');
+    setError('');
+    try {
+      const optionsRes = await httpClient.post('/auth/passkeys/register/options', {});
+      const options = optionsRes.data;
+      const credential = await startRegistration(options);
+      await httpClient.post('/auth/passkeys/register/verify', {
+        response: credential,
+        deviceName: deviceName || 'Dispositivo principal',
+      });
+      setMsg('Dispositivo registrado correctamente.');
+      setDeviceName('');
+      loadDevices();
+    } catch (err: any) {
+      if (err?.name === 'NotAllowedError') {
+        setError('Se canceló el registro del dispositivo.');
+      } else {
+        setError(err?.response?.data?.message?.message || 'No se pudo registrar el dispositivo');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeDevice = async (id: string) => {
+    if (!window.confirm('¿Eliminar este dispositivo? Ya no podrás iniciar sesión con él.')) return;
+    try {
+      await httpClient.delete(`/auth/passkeys/${id}`);
+      loadDevices();
+    } catch {
+      setError('No se pudo eliminar el dispositivo');
+    }
   };
 
   return (
     <div className="profile-page">
-      <Header />
-
       <div className="profile-head">
         <div className="profile-avatar">👤</div>
         <h2>{name}</h2>
@@ -35,7 +82,7 @@ export function ProfilePage() {
           </div>
           <div className="info-row">
             <span className="info-label">Empresa</span>
-            <span className="info-value">{companyId.slice(0, 6) || '—'}</span>
+            <span className="info-value">{companyName || '—'}</span>
           </div>
           <div className="info-row" style={{ borderBottom: 0 }}>
             <span className="info-label">Cuenta</span>
@@ -47,36 +94,66 @@ export function ProfilePage() {
           <div className="bio-notice-icon">🔐</div>
           <div>
             <strong>Autenticación biométrica disponible</strong>
-            <p>
-              Registra una huella o reconocimiento facial en este dispositivo para acceder sin
-              conexión y agilizar futuros inicios de sesión.
-            </p>
+            <p>Registra una huella, rostro o llave de seguridad para iniciar sesión sin contraseña.</p>
           </div>
         </div>
 
         <h3 className="section-title">Dispositivos</h3>
-        <div className="empty-state">
-          <span className="empty-icon">📱</span>
-          <p>No tienes dispositivos registrados</p>
+        {devices.length === 0 ? (
+          <div className="empty-state">
+            <span className="empty-icon">📱</span>
+            <p>No tienes dispositivos registrados</p>
+          </div>
+        ) : (
+          <div className="info-card" style={{ padding: '10px 14px' }}>
+            {devices.map((d) => (
+              <div key={d.id} className="info-row" style={{ gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{d.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>
+                    {new Date(d.createdAt).toLocaleDateString('es-CO')}
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeDevice(d.id)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--accent)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: 'var(--body)',
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>Nombre del dispositivo</label>
+          <input
+            className="inp"
+            value={deviceName}
+            onChange={(e) => setDeviceName(e.target.value)}
+            placeholder="Ej: iPhone de Juan"
+          />
         </div>
 
-        <button className="btn btn-primary" style={{ marginTop: 16 }}>
-          <svg viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 4c-2.8 0-5 1.6-6 3.5M19 9c0-1.2-.5-2.4-1.3-3.4M5 11c0-1 .3-2 .8-2.8M4.5 16c.7-1.3 1-2.8 1-4.3M8 19c1-1.6 1.4-3.6 1.4-5.6 0-1.5 1-2.6 2.6-2.6s2.6 1.1 2.6 2.6c0 .9-.1 1.8-.3 2.6M11.8 13.4c0 3.2-.6 5.8-1.6 7.6M15 17.5c-.3 1-.7 2-1.2 2.9"
-              stroke="#fff"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          </svg>{' '}
-          Registrar huella
+        <button className="btn btn-primary" onClick={registerDevice} disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Registrando…' : 'Registrar dispositivo'}
         </button>
-        <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={logout}>
+
+        {msg && <div className="error-msg" style={{ background: 'var(--green-soft)', color: 'var(--green-deep)', borderColor: 'rgba(62,155,97,0.2)', marginTop: 12 }}>{msg}</div>}
+        {error && <div className="error-msg" style={{ marginTop: 12 }}>{error}</div>}
+
+        <button className="btn btn-ghost" style={{ marginTop: 10 }} onClick={logout}>
           Cerrar sesión
         </button>
       </div>
-
-      <Footer />
     </div>
   );
 }

@@ -19,6 +19,14 @@ export class ConfigService {
 
   findAllCompanies() {
     return this.repo.find({
+      select: ['id', 'name', 'logoUrl', 'primaryColor', 'isActive', 'authStrategy'],
+      order: { isActive: 'DESC', name: 'ASC' },
+    });
+  }
+
+  findActiveCompanies() {
+    return this.repo.find({
+      where: { isActive: true },
       select: ['id', 'name', 'logoUrl', 'primaryColor'],
       order: { name: 'ASC' },
     });

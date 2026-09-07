@@ -6,6 +6,9 @@ import { CurrentTenant } from '../../commons/decorators/current-tenant.decorator
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { CreditsService } from './credits.service';
 import { CreateCreditDto } from './dto/create-credit.dto';
+import { StudyCreditDto } from './dto/study-credit.dto';
+import { CreditResultDto } from './dto/credit-result.dto';
+import { CreditStatus } from './entities/credit.entity';
 import { RbacService } from '../rbac/rbac.service';
 
 @Controller('credits')
@@ -30,27 +33,63 @@ export class CreditsController {
     return this.service.findAll(companyId, query);
   }
 
+  @Get(':id/documents')
+  @Permissions('credits.read')
+  documents(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.service.listDocuments(id, companyId);
+  }
+
+  @Get(':id')
+  @Permissions('credits.read')
+  findOne(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.service.findOne(id, companyId);
+  }
+
+  @Post('study')
+  @Permissions('credits.study')
+  study(@CurrentTenant() companyId: string, @Body() dto: StudyCreditDto) {
+    return this.service.study(companyId, dto);
+  }
+
   @Post()
   @Permissions('credits.create')
   create(@CurrentTenant() companyId: string, @Body() dto: CreateCreditDto) {
     return this.service.create(companyId, dto);
   }
 
+  @Post(':id/result')
+  @Permissions('credits.study')
+  result(@Param('id') id: string, @CurrentTenant() companyId: string, @Body() dto: CreditResultDto) {
+    return this.service.result(id, companyId, dto);
+  }
+
+  @Post(':id/sign')
+  @Permissions('credits.study')
+  sign(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.service.sign(id, companyId);
+  }
+
+  @Post(':id/finalize')
+  @Permissions('credits.study')
+  finalize(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.service.finalize(id, companyId);
+  }
+
   @Patch(':id/study')
   @Permissions('credits.study')
-  study(@Param('id') id: string, @CurrentTenant() companyId: string) {
-    return this.service.updateStatus(id, companyId, 'in_study');
+  studyStatus(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.service.updateStatus(id, companyId, CreditStatus.IN_STUDY);
   }
 
   @Patch(':id/approve')
   @Permissions('credits.update')
   approve(@Param('id') id: string, @CurrentTenant() companyId: string) {
-    return this.service.updateStatus(id, companyId, 'approved');
+    return this.service.updateStatus(id, companyId, CreditStatus.APPROVED);
   }
 
   @Patch(':id/reject')
   @Permissions('credits.update')
   reject(@Param('id') id: string, @CurrentTenant() companyId: string) {
-    return this.service.updateStatus(id, companyId, 'rejected');
+    return this.service.updateStatus(id, companyId, CreditStatus.REJECTED);
   }
 }
