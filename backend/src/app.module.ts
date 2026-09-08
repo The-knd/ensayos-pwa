@@ -12,6 +12,7 @@ import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module
 import { HealthModule } from './modules/health/health.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { RbacModule } from './modules/rbac/rbac.module';
+import { ModulePlacementsModule } from './modules/placements/module-placements.module';
 import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.middleware';
 import { envValidationSchema } from './commons/config/env.validation';
 import { EVENT_BUS } from './commons/interfaces/event-bus.interface';
@@ -47,6 +48,7 @@ import { TenantContextInterceptor } from './commons/interceptors/tenant-context.
     AppConfigModule,
     CreditsModule,
     FeatureFlagsModule,
+    ModulePlacementsModule,
     HealthModule,
   ],
   providers: [

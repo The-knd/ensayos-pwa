@@ -1,10 +1,25 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { httpClient } from '../../shared/api/httpClient';
 
+interface ModulePlacement {
+  id: string;
+  key: string;
+  module: string;
+  label: string;
+  placement: 'grid' | 'fab';
+  position: number;
+  path: string;
+  perm: string;
+  flag: string | null;
+  logoUrl: string | null;
+  enabled: boolean;
+}
+
 interface BootstrapData {
   user: { id: string; name: string; email: string };
   company: { id: string; name: string; theme: { primaryColor: string; logoUrl: string } };
   featureFlags: Record<string, boolean>;
+  modulePlacements: ModulePlacement[];
 }
 
 interface ModuleContext {

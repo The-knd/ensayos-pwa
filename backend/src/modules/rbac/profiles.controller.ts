@@ -3,6 +3,7 @@ import { Permissions } from '../../commons/decorators/permissions.decorator';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { CurrentTenant } from '../../commons/decorators/current-tenant.decorator';
+import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { RbacService } from './rbac.service';
 import { IsString, IsUUID, Length } from 'class-validator';
 
@@ -27,6 +28,14 @@ class AssignPermissionDto {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProfilesController {
   constructor(private readonly rbacService: RbacService) {}
+
+  @Get('context')
+  async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
+    const permissions = (await this.rbacService.getPermissions(user.sub, companyId)).filter(
+      (p) => p.startsWith('profiles.'),
+    );
+    return { permissions, featureFlags: {} };
+  }
 
   @Get()
   @Permissions('profiles.read')

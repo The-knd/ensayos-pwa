@@ -2,16 +2,6 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
-interface TileDef {
-  id: string;
-  path: string;
-  label: string;
-  perm: string;
-  implemented: boolean;
-  icon: React.ReactNode;
-  flag?: string;
-}
-
 const ICONS: Record<string, React.ReactNode> = {
   cliente: (
     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.6" stroke="currentColor" strokeWidth="2" /><path d="M5 20c0-3.4 3.1-6 7-6s7 2.6 7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -60,32 +50,16 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-const TILES: TileDef[] = [
-  { id: 'cliente', path: '/clients', label: 'Cliente', perm: 'clients.read', implemented: true, icon: ICONS.cliente },
-  { id: 'crear', path: '/clients/new', label: 'Crear cliente', perm: 'clients.create', implemented: true, icon: ICONS.crear },
-  { id: 'cartera', path: '/portfolio', label: 'Cartera', perm: 'clients.read', implemented: false, icon: ICONS.cartera, flag: 'module.portfolio' },
-  { id: 'creditos', path: '/credits', label: 'Créditos', perm: 'credits.read', implemented: true, icon: ICONS.creditos },
-  { id: 'usuarios', path: '/users', label: 'Usuarios', perm: 'users.read', implemented: true, icon: ICONS.usuarios },
-  { id: 'perfiles', path: '/profiles', label: 'Perfiles', perm: 'profiles.read', implemented: true, icon: ICONS.perfiles },
-  { id: 'config', path: '/config', label: 'Configuración', perm: 'config.read', implemented: true, icon: ICONS.config },
-  { id: 'descuentos', path: '/discounts', label: 'Descuentos', perm: 'clients.read', implemented: false, icon: ICONS.descuentos, flag: 'module.discounts' },
-  { id: 'precios', path: '/prices', label: 'Precios', perm: 'clients.read', implemented: false, icon: ICONS.precios, flag: 'module.prices' },
-  { id: 'nuevos', path: '/new-products', label: 'Nuevos', perm: 'clients.read', implemented: false, icon: ICONS.nuevos, flag: 'module.newProducts' },
-  { id: 'encuestas', path: '/surveys', label: 'Encuestas', perm: 'clients.read', implemented: false, icon: ICONS.encuestas, flag: 'module.surveys' },
-  { id: 'gastos', path: '/expenses', label: 'Gastos', perm: 'clients.read', implemented: false, icon: ICONS.gastos, flag: 'module.expenses' },
-  { id: 'quejas', path: '/complaints', label: 'Quejas', perm: 'clients.read', implemented: false, icon: ICONS.quejas, flag: 'module.complaints' },
-  { id: 'rutero', path: '/routes', label: 'Rutero', perm: 'credits.read', implemented: false, icon: ICONS.rutero, flag: 'module.routes' },
-  { id: 'brain', path: '/brain', label: 'Brain', perm: 'clients.read', implemented: false, icon: ICONS.brain, flag: 'module.brain' },
-];
+function genericIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" strokeWidth="2" /></svg>
+  );
+}
 
 export function HomePage() {
   const { bootstrap, moduleContexts, loadModuleContext } = useAuth();
-
-  useEffect(() => {
-    ['clients', 'users', 'config', 'credits'].forEach((n) =>
-      loadModuleContext(n).catch(() => undefined),
-    );
-  }, []);
+  const placements = bootstrap?.modulePlacements || [];
+  const flags = bootstrap?.featureFlags || {};
 
   const hasPerm = (perm: string) => {
     const [mod] = perm.split('.');
@@ -94,12 +68,23 @@ export function HomePage() {
     return ctx.permissions.includes(perm);
   };
 
-  const flags = bootstrap?.featureFlags || {};
-  const visible = TILES.filter((t) => {
-    if (!hasPerm(t.perm)) return false;
-    if (t.flag && !flags[t.flag]) return false;
-    return true;
-  });
+  const visible = placements
+    .filter((p) => {
+      if (!p.enabled) return false;
+      if (!hasPerm(p.perm)) return false;
+      if (p.flag && !flags[p.flag]) return false;
+      return true;
+    })
+    .sort((a, b) => a.position - b.position);
+
+  const grid = visible.filter((p) => p.placement === 'grid');
+  const fabs = visible.filter((p) => p.placement === 'fab');
+
+  useEffect(() => {
+    const mods = new Set(placements.map((p) => p.module));
+    mods.forEach((m) => loadModuleContext(m).catch(() => undefined));
+  }, [placements.length]);
+
   const name = bootstrap?.user.name?.split(' ')[0] || 'Usuario';
   const company = bootstrap?.company.name || '';
 
@@ -131,21 +116,34 @@ export function HomePage() {
 
       <div className="s2-body">
         <div className="hsec">Módulos</div>
+        {grid.length === 0 && <p className="empty-state">No hay módulos habilitados</p>}
         <div className="grid-3">
-          {visible.map((t) => (
+          {grid.map((p) => (
             <Link
-              key={t.id}
-              to={t.path}
-              className={t.implemented ? 'tile' : 'tile disabled'}
+              key={p.id}
+              to={p.path}
+              className="tile"
               style={{ textDecoration: 'none' }}
             >
-              <div className="ic">{t.icon}</div>
-              <span>{t.label}</span>
-              {!t.implemented && <span className="coming-soon">Próximamente</span>}
+              <div className="ic">{ICONS[p.key] || genericIcon()}</div>
+              <span>{p.label}</span>
             </Link>
           ))}
         </div>
       </div>
+
+      {fabs.length > 0 && (
+        <div className="fab-stack">
+          {fabs.map((p) => (
+            <Link key={p.id} to={p.path} className="fab-wrap" style={{ textDecoration: 'none' }}>
+              <button className="fab" title={p.label}>
+                {ICONS[p.key] || genericIcon()}
+              </button>
+              <span className="fab-label">{p.label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

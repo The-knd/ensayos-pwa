@@ -14,6 +14,7 @@ import { Device } from './entities/device.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { RbacModule } from '../rbac/rbac.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
+import { ModulePlacementsModule } from '../placements/module-placements.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
@@ -22,6 +23,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     PassportModule,
     RbacModule,
     FeatureFlagsModule,
+    ModulePlacementsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

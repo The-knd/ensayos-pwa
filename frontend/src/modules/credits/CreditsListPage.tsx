@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Header } from '../../shared/components/Header';
-import { Footer } from '../../shared/components/Footer';
 import { httpClient } from '../../shared/api/httpClient';
 
 interface Credit {
@@ -121,7 +120,6 @@ export function CreditsListPage() {
           </tbody>
         </table>
       </div>
-      <Footer />
     </div>
   );
 }

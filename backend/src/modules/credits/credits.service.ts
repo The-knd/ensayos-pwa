@@ -59,14 +59,49 @@ export class CreditsService {
         status: CreditStatus.IN_STUDY,
       }),
     );
-    return this.findOne(credit.id, companyId);
+    const full = await this.findOne(credit.id, companyId);
+    const mockup = this.computeMockup(full);
+    return { credit: full, mockup };
+  }
+
+  private computeMockup(credit: Credit) {
+    const income = Number(credit.monthlyIncome ?? 0);
+    const expenses = Number(credit.monthlyExpenses ?? 0);
+    const assets = Number(credit.assetsValue ?? 0);
+    const liabilities = Number(credit.liabilitiesValue ?? 0);
+    const capacity = income - expenses;
+
+    if (income <= 0) {
+      return { decision: 'rejected' as const, reason: 'No se registraron ingresos mensuales.' };
+    }
+    if (capacity <= 0) {
+      return { decision: 'rejected' as const, reason: 'La capacidad de pago es insuficiente (egresos superan ingresos).' };
+    }
+    if (liabilities > assets) {
+      return { decision: 'rejected' as const, reason: 'Los pasivos superan los activos del solicitante.' };
+    }
+
+    let approvedLimit = Math.round(capacity * 12 * 0.3 / 1000) * 1000;
+    const MIN_LIMIT = 1_000_000;
+    const MAX_LIMIT = 50_000_000;
+
+    if (approvedLimit < MIN_LIMIT) {
+      return { decision: 'rejected' as const, reason: 'El cupo calculado no alcanza el mínimo requerido.' };
+    }
+    approvedLimit = Math.min(approvedLimit, MAX_LIMIT);
+
+    return {
+      decision: 'approved' as const,
+      approvedLimit,
+      reason: `Capacidad de pago mensual $${capacity.toLocaleString('es-CO')}. Cupo aprobado calculado automáticamente.`,
+    };
   }
 
   async result(id: string, companyId: string, dto: CreditResultDto) {
     const credit = await this.findOne(id, companyId);
     if (dto.decision === 'approved') {
       credit.status = CreditStatus.APPROVED;
-      credit.approvedLimit = dto.approvedLimit ?? credit.requestedAmount;
+      credit.approvedLimit = dto.approvedLimit ?? this.computeMockup(credit).approvedLimit ?? credit.requestedAmount;
       if (!credit.applicationNumber) {
         credit.applicationNumber = this.generateApplicationNumber(credit.id);
       }

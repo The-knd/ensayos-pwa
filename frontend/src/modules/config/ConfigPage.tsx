@@ -25,10 +25,25 @@ interface FlagItem {
   enabled: boolean;
 }
 
+interface PlacementItem {
+  id: string;
+  key: string;
+  module: string;
+  label: string;
+  placement: 'grid' | 'fab';
+  position: number;
+  path: string;
+  perm: string;
+  flag: string | null;
+  logoUrl: string | null;
+  enabled: boolean;
+}
+
 const TABS = [
   { id: 'company', label: 'Mi empresa' },
   { id: 'users', label: 'Usuarios' },
   { id: 'flags', label: 'Feature Flags' },
+  { id: 'modules', label: 'Módulos' },
   { id: 'companies', label: 'Empresas' },
 ];
 
@@ -53,6 +68,13 @@ export function ConfigPage() {
 
   const [flags, setFlags] = useState<FlagItem[]>([]);
   const [newFlagKey, setNewFlagKey] = useState('');
+
+  const [placements, setPlacements] = useState<PlacementItem[]>([]);
+  const [newPlacement, setNewPlacement] = useState({
+    key: '', module: '', label: '', placement: 'grid' as 'grid' | 'fab', position: 0, path: '', perm: '', flag: '', enabled: true,
+  });
+  const [editPlacementId, setEditPlacementId] = useState<string | null>(null);
+  const [editPlacement, setEditPlacement] = useState<Partial<PlacementItem>>({});
 
   const ctx = moduleContexts['config'];
   const canUpdate = ctx?.permissions.includes('config.update');
@@ -90,6 +112,10 @@ export function ConfigPage() {
     if (tab === 'flags') loadFlags();
   }, [tab]);
 
+  useEffect(() => {
+    if (tab === 'modules') loadPlacements();
+  }, [tab]);
+
   const loadUsers = (cid: string) => {
     const url = isSuperAdmin && cid ? `/users?companyId=${cid}` : '/users';
     httpClient.get(url).then((res) => setUsers(res.data?.[0] || [])).catch(() => setUsers([]));
@@ -97,6 +123,49 @@ export function ConfigPage() {
 
   const loadFlags = () => {
     httpClient.get('/feature-flags').then((res) => setFlags(res.data || [])).catch(() => setFlags([]));
+  };
+
+  const loadPlacements = () => {
+    httpClient.get('/config/modules').then((res) => setPlacements(res.data || [])).catch(() => setPlacements([]));
+  };
+
+  const createPlacement = async () => {
+    setError('');
+    try {
+      const payload = {
+        ...newPlacement,
+        flag: newPlacement.flag || undefined,
+        position: Number(newPlacement.position) || 0,
+      };
+      await httpClient.post('/config/modules', payload);
+      setNewPlacement({ key: '', module: '', label: '', placement: 'grid', position: 0, path: '', perm: '', flag: '', enabled: true });
+      loadPlacements();
+      await refreshBootstrap();
+    } catch (err: any) {
+      setError(err?.response?.data?.message?.message || 'No se pudo crear');
+    }
+  };
+
+  const savePlacement = async (id: string) => {
+    setError('');
+    try {
+      await httpClient.patch(`/config/modules/${id}`, editPlacement);
+      setEditPlacementId(null);
+      setEditPlacement({});
+      loadPlacements();
+      await refreshBootstrap();
+    } catch (err: any) {
+      setError(err?.response?.data?.message?.message || 'No se pudo guardar');
+    }
+  };
+
+  const deletePlacement = async (id: string) => {
+    if (!window.confirm('¿Eliminar esta ubicación de módulo?')) return;
+    try {
+      await httpClient.delete(`/config/modules/${id}`);
+      loadPlacements();
+      await refreshBootstrap();
+    } catch { /* ignore */ }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -325,6 +394,143 @@ export function ConfigPage() {
                     </button>
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'modules' && (
+          <div>
+            {canUpdate && (
+              <div className="info-card" style={{ padding: 20, marginBottom: 16 }}>
+                <h3 className="section-title" style={{ marginTop: 0 }}>Nuevo módulo</h3>
+                <div className="row2">
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Key</label>
+                    <input className="inp" value={newPlacement.key} onChange={(e) => setNewPlacement({ ...newPlacement, key: e.target.value })} placeholder="Ej: creditos" />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Módulo backend</label>
+                    <input className="inp" value={newPlacement.module} onChange={(e) => setNewPlacement({ ...newPlacement, module: e.target.value })} placeholder="Ej: credits" />
+                  </div>
+                </div>
+                <div className="row2">
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Nombre visible</label>
+                    <input className="inp" value={newPlacement.label} onChange={(e) => setNewPlacement({ ...newPlacement, label: e.target.value })} placeholder="Ej: Créditos" />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Path</label>
+                    <input className="inp" value={newPlacement.path} onChange={(e) => setNewPlacement({ ...newPlacement, path: e.target.value })} placeholder="Ej: /credits" />
+                  </div>
+                </div>
+                <div className="row2">
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Permiso</label>
+                    <input className="inp" value={newPlacement.perm} onChange={(e) => setNewPlacement({ ...newPlacement, perm: e.target.value })} placeholder="Ej: credits.read" />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Feature flag (opcional)</label>
+                    <input className="inp" value={newPlacement.flag} onChange={(e) => setNewPlacement({ ...newPlacement, flag: e.target.value })} placeholder="Ej: module.credits" />
+                  </div>
+                </div>
+                <div className="row2">
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Ubicación</label>
+                    <div className="sel">
+                      <select value={newPlacement.placement} onChange={(e) => setNewPlacement({ ...newPlacement, placement: e.target.value as 'grid' | 'fab' })}>
+                        <option value="grid">Botón en Home</option>
+                        <option value="fab">FAB superior derecha</option>
+                      </select>
+                      <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Posición</label>
+                    <input className="inp" type="number" value={newPlacement.position} onChange={(e) => setNewPlacement({ ...newPlacement, position: Number(e.target.value) })} />
+                  </div>
+                </div>
+                {error && <p style={{ color: 'red', fontSize: 12, marginTop: 8 }}>{error}</p>}
+                <button className="btn btn-primary" onClick={createPlacement} style={{ width: 'auto', padding: '0 20px' }}>
+                  Crear
+                </button>
+              </div>
+            )}
+
+            {placements.length === 0 && <p className="empty-state">No hay módulos configurados</p>}
+            {placements.map((p) => (
+              <div key={p.id} className="info-card" style={{ padding: '10px 16px', marginBottom: 10 }}>
+                {editPlacementId === p.id ? (
+                  <div>
+                    <div className="row2">
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Nombre</label>
+                        <input className="inp" value={editPlacement.label ?? p.label} onChange={(e) => setEditPlacement({ ...editPlacement, label: e.target.value })} />
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Path</label>
+                        <input className="inp" value={editPlacement.path ?? p.path} onChange={(e) => setEditPlacement({ ...editPlacement, path: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="row2">
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Ubicación</label>
+                        <div className="sel">
+                          <select value={editPlacement.placement ?? p.placement} onChange={(e) => setEditPlacement({ ...editPlacement, placement: e.target.value as 'grid' | 'fab' })}>
+                            <option value="grid">Botón en Home</option>
+                            <option value="fab">FAB superior derecha</option>
+                          </select>
+                          <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Posición</label>
+                        <input className="inp" type="number" value={editPlacement.position ?? p.position} onChange={(e) => setEditPlacement({ ...editPlacement, position: Number(e.target.value) })} />
+                      </div>
+                    </div>
+                    <div className="row2">
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Permiso</label>
+                        <input className="inp" value={editPlacement.perm ?? p.perm} onChange={(e) => setEditPlacement({ ...editPlacement, perm: e.target.value })} />
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Flag (opcional)</label>
+                        <input className="inp" value={editPlacement.flag ?? (p.flag || '')} onChange={(e) => setEditPlacement({ ...editPlacement, flag: e.target.value || null })} />
+                      </div>
+                    </div>
+                    <div className="row2" style={{ marginTop: 8 }}>
+                      <button className="btn btn-primary" onClick={() => savePlacement(p.id)} style={{ width: 'auto', padding: '0 16px' }}>Guardar</button>
+                      <button className="btn btn-ghost" onClick={() => { setEditPlacementId(null); setEditPlacement({}); }} style={{ width: 'auto', padding: '0 16px' }}>Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="info-row" style={{ borderBottom: 0, padding: '8px 0' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{p.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--faint)' }}>
+                        {p.module} · {p.placement === 'grid' ? 'Home' : 'FAB'} · pos {p.position} · {p.enabled ? 'Habilitado' : 'Deshabilitado'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {canUpdate && (
+                        <>
+                          <button
+                            onClick={() => { setEditPlacementId(p.id); setEditPlacement({}); }}
+                            style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => deletePlacement(p.id)}
+                            style={{ background: 'none', border: 'none', color: '#b00020', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Eliminar
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

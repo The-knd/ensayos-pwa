@@ -934,3 +934,51 @@ input, select, textarea {
   margin-top: 8px;
 }
 .rowbtn .btn { flex: 1; }
+
+/* ===== Generic body padding for pages without s2-body ===== */
+.body {
+  padding-bottom: 96px;
+}
+
+/* ===== FAB stack (top-right) ===== */
+.fab-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1100;
+}
+.fab {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #fff;
+  border: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px -4px rgba(var(--accent-rgb), 0.55);
+  transition: transform 0.12s, box-shadow 0.2s;
+}
+.fab:hover { transform: scale(1.06); }
+.fab:active { transform: scale(0.95); }
+.fab svg { width: 22px; height: 22px; }
+.fab-label {
+  position: absolute;
+  right: 56px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.fab-wrap { position: relative; }
+.fab-wrap:hover .fab-label { opacity: 1; }

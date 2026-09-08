@@ -4,7 +4,6 @@ import { useAuth } from '../auth/AuthContext';
 import { Can } from '../../shared/components/Can';
 import { httpClient } from '../../shared/api/httpClient';
 import { Header } from '../../shared/components/Header';
-import { Footer } from '../../shared/components/Footer';
 
 interface Client {
   id: string;
@@ -114,7 +113,6 @@ export function ClientsListPage() {
         </button>
       </Can>
 
-      <Footer />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Company } from '../config/entities/company.entity';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { ModulePlacementsService } from '../placements/module-placements.service';
 
 @Controller('me')
 @UseGuards(JwtAuthGuard)
@@ -14,6 +15,7 @@ export class MeController {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Company) private companyRepo: Repository<Company>,
     private flagsService: FeatureFlagsService,
+    private placementsService: ModulePlacementsService,
   ) {}
 
   @Get('bootstrap')
@@ -21,6 +23,7 @@ export class MeController {
     const user = await this.userRepo.findOneByOrFail({ id: authUser.sub });
     const company = await this.companyRepo.findOneByOrFail({ id: authUser.companyId });
     const featureFlags = await this.flagsService.getFlags(authUser.companyId, authUser.sub);
+    const modulePlacements = await this.placementsService.findByCompany(authUser.companyId);
 
     return {
       user: { id: user.id, name: user.fullName, email: user.email },
@@ -30,6 +33,7 @@ export class MeController {
         theme: { primaryColor: company.primaryColor, logoUrl: company.logoUrl },
       },
       featureFlags,
+      modulePlacements,
     };
   }
 }

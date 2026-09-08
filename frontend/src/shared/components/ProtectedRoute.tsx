@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../modules/auth/AuthContext';
+import { Footer } from './Footer';
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { bootstrap, isLoading } = useAuth();
@@ -11,5 +12,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   if (!bootstrap) {
     return <Navigate to="/login" replace />;
   }
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Footer />
+    </>
+  );
 }

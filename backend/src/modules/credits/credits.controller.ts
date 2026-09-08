@@ -47,7 +47,7 @@ export class CreditsController {
 
   @Post('study')
   @Permissions('credits.study')
-  study(@CurrentTenant() companyId: string, @Body() dto: StudyCreditDto) {
+  async study(@CurrentTenant() companyId: string, @Body() dto: StudyCreditDto) {
     return this.service.study(companyId, dto);
   }
 

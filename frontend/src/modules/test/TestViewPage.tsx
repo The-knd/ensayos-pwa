@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { Header } from '../../shared/components/Header';
-import { Footer } from '../../shared/components/Footer';
 import { httpClient } from '../../shared/api/httpClient';
 
 export function TestViewPage() {
@@ -69,7 +68,6 @@ export function TestViewPage() {
           </button>
         </div>
       </div>
-      <Footer />
     </div>
   );
 }
