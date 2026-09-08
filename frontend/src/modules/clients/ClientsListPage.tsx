@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Can } from '../../shared/components/Can';
 import { httpClient } from '../../shared/api/httpClient';
-import { Header } from '../../shared/components/Header';
 
 interface Client {
   id: string;
@@ -41,7 +40,6 @@ export function ClientsListPage() {
 
   return (
     <div style={{ minHeight: '100vh', paddingBottom: 90, background: 'var(--bg)' }}>
-      <Header />
       <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
         <h1 style={{ fontSize: 22, color: 'var(--ink)' }}>Clientes</h1>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>

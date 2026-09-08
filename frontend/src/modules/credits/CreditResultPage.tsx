@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AppBar } from '../../shared/components/AppBar';
+import { CreditStepper } from '../../shared/components/CreditStepper';
 import { httpClient } from '../../shared/api/httpClient';
 
 interface CreditDetail {
@@ -11,10 +12,6 @@ interface CreditDetail {
   approvedLimit: string | null;
   status: string;
   nit: string | null;
-  monthlyIncome: string | null;
-  monthlyExpenses: string | null;
-  assetsValue: string | null;
-  liabilitiesValue: string | null;
   client?: {
     id: string;
     fullName: string;
@@ -22,8 +19,6 @@ interface CreditDetail {
     legalName?: string;
     commercialName?: string;
     city?: string;
-    email?: string;
-    phone?: string;
   };
 }
 
@@ -44,7 +39,7 @@ export function CreditResultPage() {
         setCredit(res.data);
         setApprovedLimit(res.data.approvedLimit ?? res.data.requestedAmount);
       })
-      .catch((err: any) => setError(err?.response?.data?.message || 'No se pudo cargar el crédito'));
+      .catch((err: any) => setError(err?.response?.data?.message?.message || 'No se pudo cargar el crédito'));
   }, [id]);
 
   const decide = async (decision: 'approved' | 'rejected') => {
@@ -70,10 +65,10 @@ export function CreditResultPage() {
 
   if (error && !credit) {
     return (
-      <div className="s2">
-        <AppBar title="Resultado del crédito" />
-        <div className="body">
-          <div className="addr-result" style={{ background: '#fdecec', borderColor: '#f6caca', color: '#c62828' }}>
+      <div className="s2 credit-shell">
+        <AppBar title="Resultado del crédito" subtitle="Paso 2 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+        <div className="body" style={{ paddingBottom: 24 }}>
+          <div className="card" style={{ borderColor: '#f6caca', background: '#fdecec', color: '#c62828', fontSize: 12, fontWeight: 600 }}>
             {error}
           </div>
         </div>
@@ -83,81 +78,74 @@ export function CreditResultPage() {
 
   if (!credit) {
     return (
-      <div className="s2">
-        <AppBar title="Resultado del crédito" />
+      <div className="s2 credit-shell">
+        <AppBar title="Resultado del crédito" subtitle="Paso 2 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
         <div className="body" style={{ color: 'var(--muted)', fontSize: 13 }}>Cargando…</div>
       </div>
     );
   }
 
-  const primary = bootstrap?.company.theme.primaryColor || '#0057B8';
+  const clientName = credit.client?.legalName || credit.client?.fullName;
 
   return (
-    <div className="s2">
-      <AppBar title="Resultado del crédito" />
-      <div className="body">
-        <div className="note">
-          <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M12 8v5M12 16.5v.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          <p>Revisa la información del solicitante y define el cupo aprobado antes de continuar con la firma del pagaré.</p>
-        </div>
-
-        <div className="sec">Datos del solicitante</div>
-        <div className="addr-result">
-          <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="8" r="3.6" stroke="currentColor" strokeWidth="2" />
-            <path d="M5 20c0-3.4 3.1-6 7-6s7 2.6 7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          <span>
-            {credit.client?.legalName || credit.client?.fullName}
-            <br />
-            {credit.client?.commercialName ? `Razón comercial: ${credit.client.commercialName}` : ''}
-            <br />
-            NIT {credit.client?.documentNumber || credit.nit} · {credit.client?.city || '—'}
-          </span>
-        </div>
-
-        <div className="info-card" style={{ background: 'var(--white)', borderRadius: 14, border: '1.5px solid var(--line)', padding: '6px 16px', margin: '12px 0' }}>
-          <div className="info-row">
-            <span className="info-label">Monto solicitado</span>
-            <span className="info-value">${Number(credit.requestedAmount).toLocaleString()}</span>
-          </div>
-          {credit.monthlyIncome && (
-            <div className="info-row">
-              <span className="info-label">Ingresos mensuales</span>
-              <span className="info-value">${Number(credit.monthlyIncome).toLocaleString()}</span>
-            </div>
-          )}
-          {credit.monthlyExpenses && (
-            <div className="info-row">
-              <span className="info-label">Egresos mensuales</span>
-              <span className="info-value">${Number(credit.monthlyExpenses).toLocaleString()}</span>
-            </div>
-          )}
-          {credit.assetsValue && (
-            <div className="info-row">
-              <span className="info-label">Activos</span>
-              <span className="info-value">${Number(credit.assetsValue).toLocaleString()}</span>
-            </div>
-          )}
-          {credit.liabilitiesValue && (
-            <div className="info-row" style={{ borderBottom: 0 }}>
-              <span className="info-label">Pasivos</span>
-              <span className="info-value">${Number(credit.liabilitiesValue).toLocaleString()}</span>
-            </div>
-          )}
-        </div>
+    <div className="s2 credit-shell">
+      <AppBar title="Resultado del crédito" subtitle={clientName} logo={bootstrap?.company.theme.logoUrl || undefined} />
+      <div className="body" style={{ paddingBottom: 24 }}>
+        <CreditStepper current={2} />
 
         {credit.status === 'rejected' ? (
-          <div className="addr-result" style={{ background: '#fdecec', borderColor: '#f6caca', color: '#c62828' }}>
-            La solicitud fue rechazada. Comunícate con el cliente para informar la decisión.
+          <div className="approve" style={{ background: '#fdecec', borderColor: '#f6caca' }}>
+            <div className="badge" style={{ background: '#E11225' }}>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l9 16H3L12 3Z" stroke="#fff" strokeWidth="2" strokeLinejoin="round" /></svg>
+            </div>
+            <h3 style={{ color: '#b00020' }}>Solicitud no aprobada</h3>
+            <p>Comunícate con el cliente para informar la decisión.</p>
           </div>
         ) : (
           <>
-            <label className="f-label">* Cupo aprobado</label>
+            <div className="approve">
+              <div className="badge">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </div>
+              <h3>¡Crédito aprobado!</h3>
+              <p>El algoritmo aprobó al cliente</p>
+              <div className="amt">${Number(approvedLimit || credit.requestedAmount).toLocaleString('es-CO')}</div>
+              <div className="amtl">Cupo aprobado</div>
+            </div>
+          </>
+        )}
+
+        {credit.status !== 'rejected' && (
+          <>
+            <div className="sectitle" style={{ marginTop: 4 }}>Condiciones de pago</div>
+            <div className="cond">
+              <div className="crow g">
+                <span className="pill">0 – 30<br />días</span>
+                <div className="cc">
+                  <div className="t">Sin intereses remuneratorios</div>
+                  <div className="d">Contados desde la entrega del bien. Si paga dentro de este plazo, no se cobran intereses.</div>
+                </div>
+              </div>
+              <div className="crow y">
+                <span className="pill">31 – 90<br />días</span>
+                <div className="cc">
+                  <div className="t">Con intereses remuneratorios</div>
+                  <div className="d">Se causan intereses sobre el saldo.</div>
+                  <span className="tag">POR DEFINIR EN JUNTA</span>
+                </div>
+              </div>
+              <div className="crow r">
+                <span className="pill">+ de 90<br />días</span>
+                <div className="cc">
+                  <div className="t">Intereses moratorios</div>
+                  <div className="d">Pasa a mora y se activa la escala de cartera (bloqueo de despachos).</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="sectitle">Configurar cupo</div>
             <div className="field">
+              <label>Cupo aprobado</label>
               <input
                 className="inp"
                 type="number"
@@ -170,24 +158,14 @@ export function CreditResultPage() {
 
             {error && <p style={{ color: '#c62828', fontSize: 12, margin: '10px 2px' }}>{error}</p>}
 
-            <div className="rowbtn">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => decide('rejected')}
-                style={{ opacity: busy ? 0.6 : 1 }}
-              >
-                Rechazar
+            <div className="sp" />
+            <div className="action-bar stacked">
+              <button className="btn btn-green" disabled={busy} onClick={() => decide('approved')} style={{ opacity: busy ? 0.6 : 1 }}>
+                Continuar a firma del pagaré
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => decide('approved')}
-                style={{ opacity: busy ? 0.6 : 1, background: primary }}
-              >
-                Aprobar y continuar
+              <button className="btn btn-ghost" disabled={busy} onClick={() => decide('rejected')} style={{ opacity: busy ? 0.6 : 1, background: '#fdecec' }}>
+                Rechazar solicitud
               </button>
             </div>
           </>

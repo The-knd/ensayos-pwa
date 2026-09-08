@@ -10,7 +10,20 @@ services:
     plugins:
       - name: cors
         config:
-          origins: ["http://localhost:5173"]
+          origins: __CORS_ORIGINS__
+          credentials: true
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+  - name: uploads-service
+    url: http://backend:3000/api/uploads
+    routes:
+      - name: uploads-route
+        paths: ["/api/uploads"]
+        strip_path: true
+    plugins:
+      - name: cors
+        config:
+          origins: __CORS_ORIGINS__
           credentials: true
           methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
@@ -27,7 +40,7 @@ services:
           cookie_names: ["access_token"]
       - name: cors
         config:
-          origins: ["http://localhost:5173"]
+          origins: __CORS_ORIGINS__
           credentials: true
           methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
       - name: rate-limiting
@@ -45,4 +58,4 @@ consumers:
     jwt_secrets:
       - key: pwa-frontend-key
         algorithm: HS256
-        secret: HQBH-YIFxwfAQGu2ibnhVgfUiJu1Cw_KOkVzysRKWw0
+        secret: __JWT_SECRET__

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { Header } from '../../shared/components/Header';
 import { httpClient } from '../../shared/api/httpClient';
 
 export function TestViewPage() {
@@ -20,7 +19,6 @@ export function TestViewPage() {
 
   return (
     <div className="s2">
-      <Header />
       <div className="body" style={{ paddingBottom: 24 }}>
         <div className="appbar" style={{ margin: '12px 0' }}>
           <div className="abtitle"><h2>Vista de Pruebas QA</h2></div>

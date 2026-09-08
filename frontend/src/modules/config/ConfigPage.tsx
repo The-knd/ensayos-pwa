@@ -478,7 +478,7 @@ export function ConfigPage() {
                         <div className="sel">
                           <select value={editPlacement.placement ?? p.placement} onChange={(e) => setEditPlacement({ ...editPlacement, placement: e.target.value as 'grid' | 'fab' })}>
                             <option value="grid">Botón en Home</option>
-                            <option value="fab">FAB superior derecha</option>
+<option value="fab">FAB inferior derecha</option>
                           </select>
                           <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                         </div>

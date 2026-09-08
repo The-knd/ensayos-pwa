@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';
 import { webcrypto } from 'crypto';
@@ -10,7 +11,8 @@ if (!(globalThis as any).crypto) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.set('trust proxy', 1);
   app.use(cookieParser());
   app.enableCors({ origin: process.env.WEBAUTHN_ORIGIN, credentials: true });
   app.useGlobalFilters(new HttpExceptionFilter());

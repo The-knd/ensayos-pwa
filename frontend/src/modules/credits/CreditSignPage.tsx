@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AppBar } from '../../shared/components/AppBar';
+import { CreditStepper } from '../../shared/components/CreditStepper';
 import { httpClient } from '../../shared/api/httpClient';
 
 interface SignCredit {
@@ -10,7 +11,13 @@ interface SignCredit {
   requestedAmount: string;
   approvedLimit: string;
   status: string;
-  client?: { fullName: string; documentNumber: string; legalName?: string };
+  client?: {
+    fullName: string;
+    documentNumber: string;
+    legalName?: string;
+    email?: string;
+    phone?: string;
+  };
 }
 
 export function CreditSignPage() {
@@ -18,6 +25,7 @@ export function CreditSignPage() {
   const { bootstrap } = useAuth();
   const navigate = useNavigate();
   const [credit, setCredit] = useState<SignCredit | null>(null);
+  const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +34,7 @@ export function CreditSignPage() {
     httpClient
       .get(`/credits/${id}`)
       .then((res) => setCredit(res.data))
-      .catch((err: any) => setError(err?.response?.data?.message || 'No se pudo cargar el crédito'));
+      .catch((err: any) => setError(err?.response?.data?.message?.message || 'No se pudo cargar el crédito'));
   }, [id]);
 
   const sign = async () => {
@@ -42,14 +50,12 @@ export function CreditSignPage() {
     }
   };
 
-  const primary = bootstrap?.company.theme.primaryColor || '#0057B8';
-
   if (error && !credit) {
     return (
-      <div className="s2">
-        <AppBar title="Firma del pagaré" />
-        <div className="body">
-          <div className="addr-result" style={{ background: '#fdecec', borderColor: '#f6caca', color: '#c62828' }}>
+      <div className="s2 credit-shell">
+        <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+        <div className="body" style={{ paddingBottom: 24 }}>
+          <div className="card" style={{ borderColor: '#f6caca', background: '#fdecec', color: '#c62828', fontSize: 12, fontWeight: 600 }}>
             {error}
           </div>
         </div>
@@ -59,67 +65,71 @@ export function CreditSignPage() {
 
   if (!credit) {
     return (
-      <div className="s2">
-        <AppBar title="Firma del pagaré" />
+      <div className="s2 credit-shell">
+        <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
         <div className="body" style={{ color: 'var(--muted)', fontSize: 13 }}>Cargando…</div>
       </div>
     );
   }
 
+  const clientName = credit.client?.legalName || credit.client?.fullName;
+  const email = credit.client?.email || 'correo@empresa.com';
+  const phone = credit.client?.phone || '';
+
   return (
-    <div className="s2">
-      <AppBar title="Firma del pagaré" />
-      <div className="body">
-        <div className="note">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <p>
-            Revisa el cupo aprobado y las condiciones antes de firmar el pagaré y la carta de
-            instrucciones. La firma es electrónica y queda registrada en el expediente del crédito.
-          </p>
+    <div className="s2 credit-shell">
+      <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+      <div className="body" style={{ paddingBottom: 24 }}>
+        <CreditStepper current={3} />
+
+        <div className="sectitle">Confirma los datos de contacto</div>
+
+        <div className="card">
+          <div className="stk"><div className="k">Cliente</div><div className="v">{clientName}</div></div>
+          <div className="stk"><div className="k">NIT</div><div className="v">{credit.client?.documentNumber}</div></div>
+          <div className="stk"><div className="k">Solicitud</div><div className="v">{credit.applicationNumber || '—'}</div></div>
+          <div className="stk"><div className="k">Cupo aprobado</div><div className="v" style={{ color: 'var(--green-deep)' }}>${Number(credit.approvedLimit || credit.requestedAmount).toLocaleString('es-CO')}</div></div>
         </div>
 
-        <div className="sec">Solicitud {credit.applicationNumber || '—'}</div>
-
-        <div className="info-card" style={{ background: 'var(--white)', borderRadius: 14, border: '1.5px solid var(--line)', padding: '6px 16px', marginBottom: 16 }}>
-          <div className="info-row">
-            <span className="info-label">Cliente</span>
-            <span className="info-value">{credit.client?.legalName || credit.client?.fullName}</span>
-          </div>
-          <div className="info-row">
-            <span className="info-label">NIT</span>
-            <span className="info-value">{credit.client?.documentNumber}</span>
-          </div>
-          <div className="info-row">
-            <span className="info-label">Monto solicitado</span>
-            <span className="info-value">${Number(credit.requestedAmount).toLocaleString()}</span>
-          </div>
-          <div className="info-row" style={{ borderBottom: 0 }}>
-            <span className="info-label">Cupo aprobado</span>
-            <span className="info-value" style={{ color: 'var(--green-deep)', fontWeight: 700 }}>
-              ${Number(credit.approvedLimit || credit.requestedAmount).toLocaleString()}
-            </span>
-          </div>
+        <div className="field" style={{ marginBottom: 10 }}>
+          <label>Correo electrónico</label>
+          <input className="inp" defaultValue={email} type="email" />
         </div>
 
-        <div className="check-row" style={{ background: 'var(--accent-soft)', borderColor: 'transparent' }}>
-          <span style={{ fontSize: 12, lineHeight: 1.5 }}>
-            <strong>Pagaré + carta de instrucciones.</strong> Al firmar aceptas el cupo aprobado y
-            las condiciones de pago del crédito. La firma se realiza sobre el resumen de la solicitud.
-          </span>
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label>Teléfono de contacto</label>
+          <input className="inp" defaultValue={phone} type="tel" placeholder="No registrado" />
+        </div>
+
+        <div className="doc">
+          <div className="di">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h9l5 5v11H5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="M14 4v5h5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="M8 15h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </div>
+          <div className="dc">
+            <div className="t">Pagaré + carta de instrucciones</div>
+            <div className="st">Se firma en: <b>Plataforma de firma electrónica</b></div>
+          </div>
+          <button className="docbtn">Ver</button>
+        </div>
+
+        <div
+          className={`check ${confirm ? 'on' : ''}`}
+          onClick={() => setConfirm((v) => !v)}
+        >
+          <span className="bx"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+          <p>Confirmo que la información de contacto es correcta y <span>acepto firmar</span> el pagaré y la carta de instrucciones.</p>
         </div>
 
         {error && <p style={{ color: '#c62828', fontSize: 12, margin: '10px 2px' }}>{error}</p>}
 
-        <div className="rowbtn">
-          <button type="button" className="btn btn-ghost" onClick={() => navigate(`/credits`)}>
-            Volver
-          </button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={sign} style={{ opacity: busy ? 0.6 : 1, background: primary }}>
-            {busy ? 'Firmando…' : 'Firmar pagaré'}
+        <div className="sp" />
+        <div className="action-bar">
+          <button className="btn btn-primary" disabled={!confirm || busy} onClick={sign} style={{ opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Firmando…' : 'Aceptar información y firmar'}
+            <svg viewBox="0 0 24 24" fill="none"><path d="M3 19c3-1 4-9 7-9s2 6 4 6 2-4 4-4 2 2 3 2" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
+        <div className="bhelp">Serás dirigido a la plataforma de firma electrónica</div>
       </div>
     </div>
   );

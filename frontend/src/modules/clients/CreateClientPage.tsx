@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '../../shared/api/httpClient';
 import { AddressBuilderModal } from '../../shared/components/AddressBuilderModal';
 
@@ -52,8 +52,10 @@ const EMPTY_ADDRESS: Address = {
 
 export function CreateClientPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nitParam = searchParams.get('nit');
   const [personType, setPersonType] = useState('');
-  const [form, setForm] = useState<Record<string, any>>({ fullName: '' });
+  const [form, setForm] = useState<Record<string, any>>({ fullName: '', documentNumber: nitParam || '' });
   const [addrModal, setAddrModal] = useState<'principal' | 'despacho' | null>(null);
   const [principal, setPrincipal] = useState<Address>({ ...EMPTY_ADDRESS });
   const [despacho, setDespacho] = useState<Address>({ ...EMPTY_ADDRESS });

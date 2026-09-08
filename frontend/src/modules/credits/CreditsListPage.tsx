@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { Header } from '../../shared/components/Header';
 import { httpClient } from '../../shared/api/httpClient';
 
 interface Credit {
@@ -53,7 +52,6 @@ export function CreditsListPage() {
 
   return (
     <div style={{ minHeight: '100vh', paddingBottom: 90, background: 'var(--bg)' }}>
-      <Header />
       <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ fontSize: 22, color: 'var(--ink)' }}>Créditos</h1>

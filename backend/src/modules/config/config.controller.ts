@@ -40,7 +40,7 @@ function safeExt(file: Express.Multer.File): string {
 }
 
 function publicLogoUrl(companyId: string, ext: string): string {
-  return `/uploads/logo-${safeId(companyId)}${ext}`;
+  return `/api/uploads/logo-${safeId(companyId)}${ext}`;
 }
 
 function removePreviousLogos(companyId: string, keep: string): void {

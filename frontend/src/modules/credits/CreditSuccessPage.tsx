@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { AppBar } from '../../shared/components/AppBar';
+import { CreditStepper } from '../../shared/components/CreditStepper';
 import { httpClient } from '../../shared/api/httpClient';
 
 interface SuccessCredit {
@@ -45,82 +45,70 @@ export function CreditSuccessPage() {
     }
   };
 
-  const primary = bootstrap?.company.theme.primaryColor || '#0057B8';
-
   return (
-    <div className="s2">
-      <AppBar title={disbursed ? '¡Crédito desembolsado!' : '¡Firma exitosa!'} />
-      <div className="body">
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '32px 8px 24px',
-            background: `linear-gradient(135deg, ${primary}, ${primary}cc)`,
-            borderRadius: 18,
-            color: '#fff',
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ fontSize: 54 }}>{disbursed ? '🎉' : '✍️'}</div>
-          <h2 style={{ margin: '10px 0 4px', fontFamily: 'var(--display)' }}>
-            {disbursed ? '¡Crédito desembolsado!' : '¡Firma exitosa!'}
-          </h2>
-          <p style={{ margin: 0, opacity: 0.9, fontSize: 13 }}>
-            {credit?.applicationNumber
-              ? `Solicitud ${credit.applicationNumber}`
-              : 'Aplica a una empresa conectada'}
-          </p>
+    <div className="s2 credit-shell" style={{ background: 'var(--bg)' }}>
+      <div className="okhero">
+        <div className="hrow" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 800, fontSize: 12 }}>{disbursed ? '¡Desembolso exitoso!' : '¡Firma exitosa!'}</span>
+          {bootstrap?.company.theme.logoUrl && (
+            <img className="alogo" src={bootstrap.company.theme.logoUrl} alt="logo" style={{ height: 26, filter: 'brightness(0) invert(1)' }} />
+          )}
+        </div>
+        <div className="badge">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </div>
+        <h3>{disbursed ? '¡Crédito desembolsado!' : '¡Firma exitosa!'}</h3>
+        <p>
+          {disbursed
+            ? 'El desembolso quedó registrado correctamente.'
+            : 'El pagaré fue firmado correctamente y la solicitud quedó creada.'}
+        </p>
+      </div>
+
+      <div className="body" style={{ paddingTop: 18 }}>
+        <CreditStepper current={4} />
+
+        <div className="card" style={{ borderColor: '#cfe8d9', background: '#f4fbf6', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--display)', fontWeight: 700, color: 'var(--green-deep)', fontSize: 15 }}>
+            {credit?.applicationNumber ? `Solicitud #${credit.applicationNumber} creada` : 'Solicitud registrada'}
+          </div>
         </div>
 
         {credit && (
-          <div className="info-card" style={{ background: 'var(--white)', borderRadius: 14, border: '1.5px solid var(--line)', padding: '6px 16px', marginBottom: 16 }}>
-            <div className="info-row">
-              <span className="info-label">Cupo aprobado</span>
-              <span className="info-value">${Number(credit.approvedLimit).toLocaleString()}</span>
-            </div>
-            <div className="info-row" style={{ borderBottom: 0 }}>
-              <span className="info-label">Estado</span>
-              <span className="info-value" style={{ color: 'var(--green-deep)', fontWeight: 700 }}>
-                {disbursed ? 'Desembolsado' : 'Firmado'}
-              </span>
-            </div>
+          <div className="card">
+            <div className="kvline"><span className="k">Cupo aprobado</span><span className="v">${Number(credit.approvedLimit).toLocaleString('es-CO')}</span></div>
+            <div className="kvline" style={{ borderTop: '1px solid var(--line)', marginTop: 4, paddingTop: 8 }}><span className="k">Sin intereses hasta</span><span className="v">30 días</span></div>
+            <div className="kvline"><span className="k">Estado</span><span className="v" style={{ color: 'var(--green-deep)' }}>{disbursed ? 'Desembolsado' : 'Firmado'}</span></div>
           </div>
         )}
 
         {!disbursed && (
           <>
-            <div className="addr-result" style={{ marginBottom: 12 }}>
-              <svg viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-                <path d="M12 8v5M12 16.5v.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-              <span>
-                El pagaré quedó firmado. Ahora puedes registrar el desembolso para completar el ciclo.
-              </span>
-            </div>
             {error && <p style={{ color: '#c62828', fontSize: 12, margin: '10px 2px' }}>{error}</p>}
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={finalize} style={{ opacity: busy ? 0.6 : 1, background: primary }}>
-              {busy ? 'Procesando…' : 'Registrar desembolso'}
-            </button>
           </>
         )}
 
         {disbursed && (
-          <div className="addr-result" style={{ background: '#eef6ee', borderColor: '#d3e8d3', color: '#2a6b3a' }}>
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>El crédito fue desembolsado correctamente. Ingresa a Documentos para consultar el expediente.</span>
+          <div className="card" style={{ background: '#eef6ee', borderColor: '#d3e8d3', color: '#2a6b3a', textAlign: 'center', fontSize: 12.5, fontWeight: 600 }}>
+            El crédito fue desembolsado correctamente. Ingresa a Documentos para consultar el expediente.
           </div>
         )}
 
-        <div className="rowbtn">
-          <button type="button" className="btn btn-ghost" onClick={() => navigate(`/credits/${id}/documents`)}>
-            Ver documentos
-          </button>
-          <button type="button" className="btn btn-primary" style={{ background: primary }} onClick={() => navigate('/credits')}>
-            Ir a créditos
-          </button>
+        <div className="sp" />
+        <div className="action-bar stacked">
+          {!disbursed && (
+            <button type="button" className="btn btn-green" disabled={busy} onClick={finalize} style={{ opacity: busy ? 0.6 : 1 }}>
+              {busy ? 'Procesando…' : 'Registrar desembolso'}
+            </button>
+          )}
+          <div className="rowbtn">
+            <button type="button" className="btn btn-ghost" onClick={() => navigate(`/credits/${id}/documents`)}>
+              Ver documentos
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => navigate('/credits')}>
+              Ir a créditos
+            </button>
+          </div>
         </div>
       </div>
     </div>

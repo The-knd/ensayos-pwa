@@ -66,6 +66,9 @@ backend/uploads/
 # Local compose overrides
 docker-compose.override.yml
 
+# Config declarativa de Kong generada en runtime (from kong.yml.tpl)
+backend/kong/kong.yml
+
 # ===========================================
 # IDE
 # ===========================================
@@ -116,6 +119,7 @@ tmp/
 *.pid
 *.seed
 *.pid.lock
+CLAUDE*
 
 # ===========================================
 # Generated files

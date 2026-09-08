@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 
 interface AppBarProps {
   title: string;
+  subtitle?: string;
+  logo?: string;
   onBack?: () => void;
   right?: ReactNode;
 }
 
-export function AppBar({ title, onBack, right }: AppBarProps) {
+export function AppBar({ title, subtitle, logo, onBack, right }: AppBarProps) {
   const navigate = useNavigate();
   const handleBack = onBack ?? (() => navigate(-1));
 
@@ -20,7 +22,9 @@ export function AppBar({ title, onBack, right }: AppBarProps) {
       </button>
       <div className="abtitle">
         <h2>{title}</h2>
+        {subtitle && <small>{subtitle}</small>}
       </div>
+      {logo && <img className="alogo" src={logo} alt="logo" />}
       {right}
     </div>
   );
