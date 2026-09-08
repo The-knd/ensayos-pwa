@@ -10,6 +10,8 @@ import { CreditResultDto } from './dto/credit-result.dto';
 
 @Injectable()
 export class CreditsService {
+  private static readonly APPROVED_LIMIT = 2_000_000;
+
   constructor(
     @InjectRepository(Credit) private repo: Repository<Credit>,
     @InjectRepository(CreditDocument) private docsRepo: Repository<CreditDocument>,
@@ -81,19 +83,10 @@ export class CreditsService {
       return { decision: 'rejected' as const, reason: 'Los pasivos superan los activos del solicitante.' };
     }
 
-    let approvedLimit = Math.round(capacity * 12 * 0.3 / 1000) * 1000;
-    const MIN_LIMIT = 1_000_000;
-    const MAX_LIMIT = 50_000_000;
-
-    if (approvedLimit < MIN_LIMIT) {
-      return { decision: 'rejected' as const, reason: 'El cupo calculado no alcanza el mínimo requerido.' };
-    }
-    approvedLimit = Math.min(approvedLimit, MAX_LIMIT);
-
     return {
       decision: 'approved' as const,
-      approvedLimit,
-      reason: `Capacidad de pago mensual $${capacity.toLocaleString('es-CO')}. Cupo aprobado calculado automáticamente.`,
+      approvedLimit: CreditsService.APPROVED_LIMIT,
+      reason: `Capacidad de pago mensual $${capacity.toLocaleString('es-CO')}. Cupo aprobado de $${CreditsService.APPROVED_LIMIT.toLocaleString('es-CO')}.`,
     };
   }
 

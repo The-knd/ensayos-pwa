@@ -105,7 +105,7 @@ export function CreditSuccessPage() {
             <button type="button" className="btn btn-ghost" onClick={() => navigate(`/credits/${id}/documents`)}>
               Ver documentos
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => navigate('/credits')}>
+            <button type="button" className="btn btn-primary" onClick={() => navigate('/credits/list')}>
               Ir a créditos
             </button>
           </div>

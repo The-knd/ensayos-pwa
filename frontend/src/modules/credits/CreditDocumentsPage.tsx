@@ -114,7 +114,7 @@ export function CreditDocumentsPage() {
         })}
 
         <div className="rowbtn">
-          <button type="button" className="btn btn-ghost" onClick={() => navigate('/credits')}>
+          <button type="button" className="btn btn-ghost" onClick={() => navigate('/credits/list')}>
             Volver
           </button>
           {status === 'signed' && (

@@ -8,6 +8,7 @@ import { CreateClientPage } from './modules/clients/CreateClientPage';
 import { EditClientPage } from './modules/clients/EditClientPage';
 import { ProfilePage } from './modules/profile/ProfilePage';
 import { ConfigPage } from './modules/config/ConfigPage';
+import { CreditsHomePage } from './modules/credits/CreditsHomePage';
 import { CreditsListPage } from './modules/credits/CreditsListPage';
 import { CreditStudyPage } from './modules/credits/CreditStudyPage';
 import { CreditResultPage } from './modules/credits/CreditResultPage';
@@ -77,6 +78,14 @@ export function App() {
           />
           <Route
             path="/credits"
+            element={
+              <ProtectedRoute>
+                <CreditsHomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/credits/list"
             element={
               <ProtectedRoute>
                 <CreditsListPage />

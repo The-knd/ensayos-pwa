@@ -1202,6 +1202,38 @@ input, select, textarea {
 .approve p { font-size: 11.5px; color: #3a6b4f; margin-top: 2px; }
 .approve .amt { font-family: var(--display); font-weight: 700; font-size: 25px; color: var(--ink); margin-top: 10px; line-height: 1; }
 .approve .amtl { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+/* ===== Modal ===== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 32, 0.5);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1200;
+  padding: 0;
+}
+.modal-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--white);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 30px -10px rgba(0,0,0,0.3);
+  animation: modal-up 0.18s ease-out;
+}
+@keyframes modal-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (min-width: 560px) {
+  .modal-backdrop { align-items: center; padding: 20px; }
+  .modal-sheet { border-radius: 20px; }
+}
+
 .terms {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1323,13 +1355,18 @@ input, select, textarea {
   .body {
     padding-bottom: 110px;
   }
-  /* Flujo de estudio de crédito (Study → Result → Sign → Success): en vez del
-     marco fijo de 500px, crece de forma fluida hasta que el layout de
-     escritorio (sidebar, ≥768px) toma el control. El AppBar/okhero de cada
-     paso dejan de auto-limitarse a --app-max y llenan este contenedor para
-     que el header no quede más angosto que el body. */
+}
+
+/* Flujo de estudio de crédito (Study → Result → Sign → Success), solo en el
+   rango intermedio 560–767.98px: en vez del marco fijo de 500px, crece de
+   forma fluida y centrada. A partir de 768px el layout de escritorio
+   (sidebar, más abajo) resetea .s2 a ancho completo sin cap alguno — esta
+   regla no debe competir con ese reset, por eso queda fuera de su rango. */
+@media (min-width: 560px) and (max-width: 767.98px) {
   .s2.credit-shell {
     max-width: min(720px, calc(100% - 32px));
+    margin-left: auto;
+    margin-right: auto;
   }
   .credit-shell .appbar,
   .credit-shell .okhero {
@@ -1357,6 +1394,7 @@ input, select, textarea {
 }
 .action-bar .btn { flex: 1; }
 .action-bar.stacked { flex-direction: column; }
+.action-bar.stacked .btn { height: 60px; }
 .action-bar .rowbtn { width: 100%; }
 
 /* ===== Flujo de crédito: acciones fijas al pie de pantalla (móvil) ===== */
@@ -1376,6 +1414,65 @@ input, select, textarea {
   padding: 18px 22px 28px;
 }
 .credit-body::-webkit-scrollbar { width: 0; }
+
+/* ===== Home de módulo: opciones grandes (estudio / cartera) ===== */
+.qlab {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 3px 13px;
+}
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  cursor: pointer;
+  border-radius: 19px;
+  padding: 17px 15px;
+  margin-bottom: 13px;
+  font-family: var(--body);
+  transition: transform 0.12s;
+}
+.opt:active { transform: scale(0.99); }
+.opt .ic {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: rgba(255,255,255,0.18);
+}
+.opt .ic svg { width: 25px; height: 25px; color: #fff; }
+.opt .tx { flex: 1; min-width: 0; }
+.opt .tx .t {
+  display: block;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+  color: #fff;
+  line-height: 1.15;
+}
+.opt .tx .s {
+  display: block;
+  font-size: 11px;
+  color: rgba(255,255,255,0.82);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+.opt .ar { width: 20px; height: 20px; color: rgba(255,255,255,0.9); flex: none; }
+.opt.blue {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  box-shadow: 0 16px 26px -14px rgba(var(--accent-rgb), 0.75);
+}
+.opt.green {
+  background: linear-gradient(135deg, var(--green-light), var(--green-deep));
+  box-shadow: 0 16px 26px -14px rgba(47, 125, 77, 0.75);
+}
 .credit-actions {
   position: static;
   flex: none;

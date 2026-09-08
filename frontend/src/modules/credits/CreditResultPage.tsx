@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AppBar } from '../../shared/components/AppBar';
 import { CreditStepper } from '../../shared/components/CreditStepper';
@@ -22,12 +22,19 @@ interface CreditDetail {
   };
 }
 
+interface StudyResultState {
+  decision?: 'approved' | 'rejected';
+  approvedLimit?: number;
+  reason?: string;
+}
+
 export function CreditResultPage() {
   const { id } = useParams<{ id: string }>();
   const { bootstrap } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const studyResult = (location.state as StudyResultState | null) ?? null;
   const [credit, setCredit] = useState<CreditDetail | null>(null);
-  const [approvedLimit, setApprovedLimit] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -35,10 +42,7 @@ export function CreditResultPage() {
     if (!id) return;
     httpClient
       .get(`/credits/${id}`)
-      .then((res) => {
-        setCredit(res.data);
-        setApprovedLimit(res.data.approvedLimit ?? res.data.requestedAmount);
-      })
+      .then((res) => setCredit(res.data))
       .catch((err: any) => setError(err?.response?.data?.message?.message || 'No se pudo cargar el crédito'));
   }, [id]);
 
@@ -47,10 +51,7 @@ export function CreditResultPage() {
     setBusy(true);
     setError('');
     try {
-      await httpClient.post(`/credits/${id}/result`, {
-        decision,
-        approvedLimit: decision === 'approved' ? Number(approvedLimit) : undefined,
-      });
+      await httpClient.post(`/credits/${id}/result`, { decision });
       if (decision === 'approved') {
         navigate(`/credits/sign/${id}`);
       } else {
@@ -86,6 +87,8 @@ export function CreditResultPage() {
   }
 
   const clientName = credit.client?.legalName || credit.client?.fullName;
+  const isRejected = credit.status === 'rejected' || studyResult?.decision === 'rejected';
+  const approvedLimit = studyResult?.approvedLimit ?? Number(credit.approvedLimit ?? credit.requestedAmount);
 
   return (
     <div className="s2 credit-shell">
@@ -93,13 +96,13 @@ export function CreditResultPage() {
       <div className="body" style={{ paddingBottom: 24 }}>
         <CreditStepper current={2} />
 
-        {credit.status === 'rejected' ? (
+        {isRejected ? (
           <div className="approve" style={{ background: '#fdecec', borderColor: '#f6caca' }}>
             <div className="badge" style={{ background: '#E11225' }}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l9 16H3L12 3Z" stroke="#fff" strokeWidth="2" strokeLinejoin="round" /></svg>
             </div>
             <h3 style={{ color: '#b00020' }}>Solicitud no aprobada</h3>
-            <p>Comunícate con el cliente para informar la decisión.</p>
+            <p>{studyResult?.reason || 'Comunícate con el cliente para informar la decisión.'}</p>
           </div>
         ) : (
           <>
@@ -108,14 +111,14 @@ export function CreditResultPage() {
                 <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </div>
               <h3>¡Crédito aprobado!</h3>
-              <p>El algoritmo aprobó al cliente</p>
-              <div className="amt">${Number(approvedLimit || credit.requestedAmount).toLocaleString('es-CO')}</div>
+              <p>{studyResult?.reason || 'El algoritmo aprobó al cliente'}</p>
+              <div className="amt">${approvedLimit.toLocaleString('es-CO')}</div>
               <div className="amtl">Cupo aprobado</div>
             </div>
           </>
         )}
 
-        {credit.status !== 'rejected' && (
+        {!isRejected && (
           <>
             <div className="sectitle" style={{ marginTop: 4 }}>Condiciones de pago</div>
             <div className="cond">
@@ -141,19 +144,6 @@ export function CreditResultPage() {
                   <div className="d">Pasa a mora y se activa la escala de cartera (bloqueo de despachos).</div>
                 </div>
               </div>
-            </div>
-
-            <div className="sectitle">Configurar cupo</div>
-            <div className="field">
-              <label>Cupo aprobado</label>
-              <input
-                className="inp"
-                type="number"
-                min="0"
-                step="0.01"
-                value={approvedLimit}
-                onChange={(e) => setApprovedLimit(e.target.value)}
-              />
             </div>
 
             {error && <p style={{ color: '#c62828', fontSize: 12, margin: '10px 2px' }}>{error}</p>}
