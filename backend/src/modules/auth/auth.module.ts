@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
 import { MeController } from './me.controller';
 import { AuthStrategyResolver } from './auth-strategy.resolver';
 import { LocalAuthStrategy } from './strategies/local-auth.strategy';
@@ -12,18 +13,20 @@ import { User } from '../users/entities/user.entity';
 import { Company } from '../config/entities/company.entity';
 import { Device } from './entities/device.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
-import { RbacModule } from '../rbac/rbac.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ModulePlacementsModule } from '../placements/module-placements.module';
+import { UsersModule } from '../users/users.module';
+import { ConfigModule as AppConfigModule } from '../config/config.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Company, Device, RefreshToken]),
     PassportModule,
-    RbacModule,
     FeatureFlagsModule,
     ModulePlacementsModule,
+    UsersModule,
+    AppConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -37,7 +40,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     }),
   ],
   controllers: [AuthController, MeController],
-  providers: [AuthStrategyResolver, LocalAuthStrategy, PasskeyAuthStrategy, JwtStrategy],
+  providers: [AuthService, AuthStrategyResolver, LocalAuthStrategy, PasskeyAuthStrategy, JwtStrategy],
   exports: [],
 })
 export class AuthModule {}

@@ -1,10 +1,8 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
-import { Company } from '../config/entities/company.entity';
+import { UsersService } from '../users/users.service';
+import { ConfigService as AppConfigService } from '../config/config.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { ModulePlacementsService } from '../placements/module-placements.service';
 
@@ -12,16 +10,16 @@ import { ModulePlacementsService } from '../placements/module-placements.service
 @UseGuards(JwtAuthGuard)
 export class MeController {
   constructor(
-    @InjectRepository(User) private userRepo: Repository<User>,
-    @InjectRepository(Company) private companyRepo: Repository<Company>,
+    private usersService: UsersService,
+    private configService: AppConfigService,
     private flagsService: FeatureFlagsService,
     private placementsService: ModulePlacementsService,
   ) {}
 
   @Get('bootstrap')
   async bootstrap(@CurrentUser() authUser: { sub: string; companyId: string }) {
-    const user = await this.userRepo.findOneByOrFail({ id: authUser.sub });
-    const company = await this.companyRepo.findOneByOrFail({ id: authUser.companyId });
+    const user = await this.usersService.findOne(authUser.sub, authUser.companyId);
+    const company = await this.configService.findOne(authUser.companyId);
     const featureFlags = await this.flagsService.getFlags(authUser.companyId, authUser.sub);
     const modulePlacements = await this.placementsService.findByCompany(authUser.companyId);
 

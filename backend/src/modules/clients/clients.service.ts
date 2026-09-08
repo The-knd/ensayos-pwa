@@ -34,6 +34,20 @@ export class ClientsService {
     return client;
   }
 
+  /**
+   * Proyección mínima para otros módulos (ej. credits) que solo necesitan
+   * confirmar que un cliente existe en el tenant y leer un par de campos,
+   * sin acoplarse a un Repository<Client> propio ni cargar relaciones.
+   */
+  async findBasicInTenant(id: string, companyId: string) {
+    const client = await this.repo.findOne({
+      where: { id, companyId },
+      select: ['id', 'documentNumber'],
+    });
+    if (!client) throw new NotFoundException('Cliente no encontrado en esta empresa');
+    return client;
+  }
+
   async create(companyId: string, dto: CreateClientDto) {
     const { directions, references, ...rest } = dto;
     return this.dataSource.transaction(async (manager) => {

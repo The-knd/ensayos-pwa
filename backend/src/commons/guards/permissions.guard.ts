@@ -1,13 +1,13 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Inject, Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
-import { RbacService } from '../../modules/rbac/rbac.service';
+import { PERMISSION_PROVIDER, PermissionProviderPort } from '../interfaces/permission-provider.interface';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
-    private rbacService: RbacService,
+    @Inject(PERMISSION_PROVIDER) private permissionProvider: PermissionProviderPort,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -19,7 +19,7 @@ export class PermissionsGuard implements CanActivate {
 
     if (!user) throw new ForbiddenException('No autenticado');
 
-    const userPermissions = await this.rbacService.getPermissions(user.sub, user.companyId);
+    const userPermissions = await this.permissionProvider.getPermissions(user.sub, user.companyId);
 
     const hasAll = required.every((perm) => userPermissions.includes(perm));
     if (!hasAll) {

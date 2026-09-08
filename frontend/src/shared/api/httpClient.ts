@@ -3,6 +3,11 @@ import axios from 'axios';
 export const httpClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '/api',
   withCredentials: true,
+  headers: {
+    // Mitigación CSRF pragmática: un formulario cross-site no puede fijar este
+    // header, así que el backend lo exige en toda mutación (ver CsrfMiddleware).
+    'X-Requested-With': 'XMLHttpRequest',
+  },
 });
 
 let isRefreshing = false;

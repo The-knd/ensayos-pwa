@@ -3,10 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ModulePlacement } from './entities/module-placement.entity';
 import { ModulePlacementsService } from './module-placements.service';
 import { ModulePlacementsController } from './module-placements.controller';
-import { RbacModule } from '../rbac/rbac.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ModulePlacement]), RbacModule],
+  imports: [TypeOrmModule.forFeature([ModulePlacement])],
   controllers: [ModulePlacementsController],
   providers: [ModulePlacementsService],
   exports: [ModulePlacementsService],

@@ -21,9 +21,7 @@ export class CreditsController {
 
   @Get('context')
   async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
-    const permissions = (await this.rbacService.getPermissions(user.sub, companyId)).filter(
-      (p) => p.startsWith('credits.'),
-    );
+    const permissions = await this.rbacService.getPermissionsByPrefix(user.sub, companyId, 'credits');
     return { permissions, featureFlags: {} };
   }
 

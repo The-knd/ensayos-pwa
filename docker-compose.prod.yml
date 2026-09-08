@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pwa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD (openssl rand -base64 48)}
+      POSTGRES_DB: ${POSTGRES_DB:?Define POSTGRES_DB}
+    # Sin puertos publicados al host: solo backend/migraciones lo alcanzan
+    # por la red interna de Docker.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pwa-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD (openssl rand -base64 32)}
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: pwa-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    # Migraciones automáticas en cada deploy, antes de levantar el servidor.
+    command:
+      - sh
+      - -c
+      - npx typeorm migration:run -d dist/database/data-source.js && node dist/main
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    # Sin volumes: la imagen es inmutable, todo el código ya está en dist/.
+
+  kong:
+    image: kong:3.6
+    container_name: pwa-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Define JWT_ACCESS_SECRET (openssl rand -base64 48)}
+      KONG_CORS_ORIGINS: ${KONG_CORS_ORIGINS:?Define KONG_CORS_ORIGINS, ej. ["https://tu-dominio.com"]}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD}
+    volumes:
+      - ./backend/kong:/kong
+    entrypoint: ["/bin/sh", "/kong/start.sh"]
+    # Sin puertos publicados al host: nginx lo alcanza por la red interna.
+    # El admin API (8001) queda solo dentro del contenedor.
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: pwa-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"   # habilitar cuando haya TLS (certbot en el host o
+      #                 reverse proxy externo del proveedor)
+    depends_on:
+      kong:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

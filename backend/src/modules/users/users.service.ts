@@ -2,14 +2,12 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserStatus } from './entities/user.entity';
-import { Profile } from '../rbac/entities/profile.entity';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User) private repo: Repository<User>,
-    @InjectRepository(Profile) private profileRepo: Repository<Profile>,
   ) {}
 
   findAll(companyId: string) {
@@ -17,10 +15,6 @@ export class UsersService {
       where: { companyId },
       select: ['id', 'email', 'fullName', 'status', 'profileId', 'createdAt'],
     });
-  }
-
-  findProfiles() {
-    return this.profileRepo.find({ order: { name: 'ASC' } });
   }
 
   async findOne(id: string, companyId: string) {

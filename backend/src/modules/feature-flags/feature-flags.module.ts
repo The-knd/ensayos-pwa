@@ -3,10 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FeatureFlag } from './entities/feature-flag.entity';
 import { FeatureFlagsService } from './feature-flags.service';
 import { FeatureFlagsController } from './feature-flags.controller';
-import { RbacModule } from '../rbac/rbac.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([FeatureFlag]), RbacModule],
+  imports: [TypeOrmModule.forFeature([FeatureFlag])],
   controllers: [FeatureFlagsController],
   providers: [FeatureFlagsService],
   exports: [FeatureFlagsService],

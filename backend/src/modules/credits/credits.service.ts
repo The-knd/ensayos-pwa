@@ -3,19 +3,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Credit, CreditStatus } from './entities/credit.entity';
 import { CreditDocument } from './entities/credit-document.entity';
-import { Client } from '../clients/entities/client.entity';
+import { ClientsService } from '../clients/clients.service';
+import { CreditScoringService } from './credit-scoring.service';
 import { CreateCreditDto } from './dto/create-credit.dto';
 import { StudyCreditDto } from './dto/study-credit.dto';
 import { CreditResultDto } from './dto/credit-result.dto';
 
 @Injectable()
 export class CreditsService {
-  private static readonly APPROVED_LIMIT = 2_000_000;
-
   constructor(
     @InjectRepository(Credit) private repo: Repository<Credit>,
     @InjectRepository(CreditDocument) private docsRepo: Repository<CreditDocument>,
-    @InjectRepository(Client) private clientRepo: Repository<Client>,
+    private clientsService: ClientsService,
+    private scoring: CreditScoringService,
   ) {}
 
   findAll(companyId: string, query: { page?: number; limit?: number }) {
@@ -62,39 +62,15 @@ export class CreditsService {
       }),
     );
     const full = await this.findOne(credit.id, companyId);
-    const mockup = this.computeMockup(full);
+    const mockup = this.scoring.computeMockup(full);
     return { credit: full, mockup };
-  }
-
-  private computeMockup(credit: Credit) {
-    const income = Number(credit.monthlyIncome ?? 0);
-    const expenses = Number(credit.monthlyExpenses ?? 0);
-    const assets = Number(credit.assetsValue ?? 0);
-    const liabilities = Number(credit.liabilitiesValue ?? 0);
-    const capacity = income - expenses;
-
-    if (income <= 0) {
-      return { decision: 'rejected' as const, reason: 'No se registraron ingresos mensuales.' };
-    }
-    if (capacity <= 0) {
-      return { decision: 'rejected' as const, reason: 'La capacidad de pago es insuficiente (egresos superan ingresos).' };
-    }
-    if (liabilities > assets) {
-      return { decision: 'rejected' as const, reason: 'Los pasivos superan los activos del solicitante.' };
-    }
-
-    return {
-      decision: 'approved' as const,
-      approvedLimit: CreditsService.APPROVED_LIMIT,
-      reason: `Capacidad de pago mensual $${capacity.toLocaleString('es-CO')}. Cupo aprobado de $${CreditsService.APPROVED_LIMIT.toLocaleString('es-CO')}.`,
-    };
   }
 
   async result(id: string, companyId: string, dto: CreditResultDto) {
     const credit = await this.findOne(id, companyId);
     if (dto.decision === 'approved') {
       credit.status = CreditStatus.APPROVED;
-      credit.approvedLimit = dto.approvedLimit ?? this.computeMockup(credit).approvedLimit ?? credit.requestedAmount;
+      credit.approvedLimit = dto.approvedLimit ?? this.scoring.computeMockup(credit).approvedLimit ?? credit.requestedAmount;
       if (!credit.applicationNumber) {
         credit.applicationNumber = this.generateApplicationNumber(credit.id);
       }
@@ -167,10 +143,8 @@ export class CreditsService {
     return this.repo.save(credit);
   }
 
-  private async ensureClientInTenant(clientId: string, companyId: string) {
-    const client = await this.clientRepo.findOne({ where: { id: clientId, companyId } });
-    if (!client) throw new NotFoundException('Cliente no encontrado en esta empresa');
-    return client;
+  private ensureClientInTenant(clientId: string, companyId: string) {
+    return this.clientsService.findBasicInTenant(clientId, companyId);
   }
 
   private generateApplicationNumber(creditId: string): string {

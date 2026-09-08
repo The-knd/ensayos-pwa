@@ -6,11 +6,10 @@ import { ClientReference } from './entities/client-reference.entity';
 import { ClientTaxSettings } from './entities/client-tax.entity';
 import { ClientsService } from './clients.service';
 import { ClientsController } from './clients.controller';
-import { RbacModule } from '../rbac/rbac.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Client, ClientDirection, ClientReference, ClientTaxSettings]), RbacModule, FeatureFlagsModule],
+  imports: [TypeOrmModule.forFeature([Client, ClientDirection, ClientReference, ClientTaxSettings]), FeatureFlagsModule],
   controllers: [ClientsController],
   providers: [ClientsService],
   exports: [ClientsService],

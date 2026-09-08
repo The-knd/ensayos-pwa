@@ -19,22 +19,22 @@ export class UsersController {
 
   @Get('context')
   async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
-    const permissions = (await this.rbacService.getPermissions(user.sub, companyId)).filter(
-      (p) => p.startsWith('users.'),
-    );
+    const permissions = await this.rbacService.getPermissionsByPrefix(user.sub, companyId, 'users');
     return { permissions, featureFlags: {} };
   }
 
   @Get('profiles')
   @Permissions('users.read')
-  findProfiles() {
-    return this.service.findProfiles();
+  findProfiles(@CurrentTenant() companyId: string) {
+    // Fuente única de verdad: RbacService.findProfiles ya filtra por tenant
+    // (companyId propio + perfiles de sistema con companyId NULL).
+    return this.rbacService.findProfiles(companyId);
   }
 
   @Get()
   @Permissions('users.read')
   findAll(@CurrentUser() user, @CurrentTenant() companyId: string, @Query('companyId') requestedCompanyId?: string) {
-    const isSuperAdmin = user.profileId === 'aaaaaaaa-0000-0000-0000-000000000001';
+    const isSuperAdmin = user.profileId === 'aaaaaaaa-0000-4000-8000-000000000001';
     const effectiveCompanyId = (requestedCompanyId && isSuperAdmin) ? requestedCompanyId : companyId;
     return this.service.findAll(effectiveCompanyId);
   }

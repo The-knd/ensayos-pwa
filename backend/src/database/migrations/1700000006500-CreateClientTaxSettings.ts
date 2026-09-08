@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateClientTaxSettings1700000006000 implements MigrationInterface {
-  name = 'CreateClientTaxSettings1700000006000';
+export class CreateClientTaxSettings1700000006500 implements MigrationInterface {
+  name = 'CreateClientTaxSettings1700000006500';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

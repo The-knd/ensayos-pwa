@@ -34,9 +34,9 @@ export class ModulePlacements1700000011000 implements MigrationInterface {
 
     // 3. Seed placements para las 3 empresas (solo módulos implementados)
     const companies = [
-      '11111111-1111-1111-1111-111111111111',
-      '22222222-2222-2222-2222-222222222222',
-      '33333333-3333-3333-3333-333333333333',
+      '11111111-1111-1111-8111-111111111111',
+      '22222222-2222-2222-8222-222222222222',
+      '33333333-3333-3333-8333-333333333333',
     ];
 
     const placements = [

@@ -11,6 +11,7 @@ import Redis from 'ioredis';
         return new Redis({
           host: config.get('REDIS_HOST', 'localhost'),
           port: config.get('REDIS_PORT', 6379),
+          password: config.get('REDIS_PASSWORD'),
         });
       },
       inject: [ConfigService],

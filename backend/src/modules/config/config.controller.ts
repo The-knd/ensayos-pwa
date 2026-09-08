@@ -67,9 +67,7 @@ export class ConfigController {
 
   @Get('context')
   async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
-    const permissions = (await this.rbacService.getPermissions(user.sub, companyId)).filter(
-      (p) => p.startsWith('config.'),
-    );
+    const permissions = await this.rbacService.getPermissionsByPrefix(user.sub, companyId, 'config');
     return { permissions, featureFlags: {} };
   }
 

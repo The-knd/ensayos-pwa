@@ -1,8 +1,9 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ClientsModule } from './modules/clients/clients.module';
@@ -14,9 +15,8 @@ import { RedisModule } from './modules/redis/redis.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { ModulePlacementsModule } from './modules/placements/module-placements.module';
 import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.middleware';
+import { CsrfMiddleware } from './commons/middlewares/csrf.middleware';
 import { envValidationSchema } from './commons/config/env.validation';
-import { EVENT_BUS } from './commons/interfaces/event-bus.interface';
-import { InMemoryEventBus } from './commons/infrastructure/in-memory-event-bus';
 import { TenantContextInterceptor } from './commons/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -40,6 +40,14 @@ import { TenantContextInterceptor } from './commons/interceptors/tenant-context.
       }),
     }),
     EventEmitterModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        // Límite general de defensa en profundidad (Kong ya aplica 100/min en producción).
+        name: 'default',
+        ttl: 60000,
+        limit: 300,
+      },
+    ]),
     RedisModule,
     RbacModule,
     AuthModule,
@@ -57,13 +65,14 @@ import { TenantContextInterceptor } from './commons/interceptors/tenant-context.
       useClass: TenantContextInterceptor,
     },
     {
-      provide: EVENT_BUS,
-      useClass: InMemoryEventBus,
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+    consumer.apply(CsrfMiddleware).forRoutes('*');
   }
 }

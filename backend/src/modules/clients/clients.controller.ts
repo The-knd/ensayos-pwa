@@ -21,8 +21,7 @@ export class ClientsController {
 
   @Get('context')
   async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
-    const all = await this.rbacService.getPermissions(user.sub, companyId);
-    const permissions = all.filter((p) => p.startsWith('clients.'));
+    const permissions = await this.rbacService.getPermissionsByPrefix(user.sub, companyId, 'clients');
     const allFlags = await this.flagsService.getFlags(companyId, user.sub);
     const featureFlags = Object.fromEntries(
       Object.entries(allFlags).filter(([k]) => k.toLowerCase().includes('client')),

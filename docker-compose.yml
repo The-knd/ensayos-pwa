@@ -21,13 +21,15 @@ services:
     image: redis:7-alpine
     container_name: pwa-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD en el .env raiz del proyecto}
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -45,7 +47,7 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -60,14 +62,15 @@ services:
     container_name: pwa-frontend
     restart: unless-stopped
     environment:
-      VITE_PROXY_TARGET: http://backend:3000
+      VITE_PROXY_TARGET: http://kong:8000
     ports:
       - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
-      - backend
+      kong:
+        condition: service_healthy
 
   kong:
     image: kong:3.6
@@ -80,14 +83,24 @@ services:
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Define JWT_ACCESS_SECRET en el .env raiz del proyecto}
       KONG_CORS_ORIGINS: ${KONG_CORS_ORIGINS:-'["http://localhost:5173"]'}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD en el .env raiz del proyecto}
     volumes:
       - ./backend/kong:/kong
     entrypoint: ["/bin/sh", "/kong/start.sh"]
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8001:8001"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     depends_on:
-      - backend
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
 volumes:
   pgdata:

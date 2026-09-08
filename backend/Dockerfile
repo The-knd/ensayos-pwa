@@ -34,7 +34,7 @@ FROM node:20-alpine AS development
 WORKDIR /app
 COPY package*.json ./
 RUN apk add --no-cache python3 make g++ \
-    && npm install \
+    && npm ci \
     && npm rebuild bcrypt --build-from-source
 COPY . .
 EXPOSE 3000

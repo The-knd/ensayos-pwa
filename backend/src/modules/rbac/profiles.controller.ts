@@ -31,9 +31,7 @@ export class ProfilesController {
 
   @Get('context')
   async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
-    const permissions = (await this.rbacService.getPermissions(user.sub, companyId)).filter(
-      (p) => p.startsWith('profiles.'),
-    );
+    const permissions = await this.rbacService.getPermissionsByPrefix(user.sub, companyId, 'profiles');
     return { permissions, featureFlags: {} };
   }
 

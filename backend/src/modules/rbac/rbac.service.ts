@@ -25,24 +25,25 @@ export class RbacService {
     const cached = await this.redis.get(this.cacheKey(userId));
     if (cached) return JSON.parse(cached);
 
-    const result: { code: string }[] = await this.userRepo.query(
-      `
-      SELECT DISTINCT p.code
-      FROM users u
-      JOIN profile_permissions pp ON pp.profile_id = u.profile_id
-      JOIN permissions p ON p.id = pp.permission_id
-      WHERE u.id = $1 AND u.company_id = $2
-      `,
-      [userId, companyId],
-    );
+    // Mismo alcance que la query cruda anterior: si el usuario no existe o no
+    // pertenece a companyId, no hay permisos (nunca se filtran por perfil de
+    // otra empresa).
+    const user = await this.userRepo.findOne({ where: { id: userId, companyId } });
+    const permissions = user ? await this.getProfilePermissions(user.profileId) : [];
+    const codes = permissions.map((p) => p.code);
 
-    const codes = result.map((r) => r.code);
     await this.redis.set(this.cacheKey(userId), JSON.stringify(codes), 'EX', 120);
     return codes;
   }
 
   async invalidateCache(userId: string): Promise<void> {
     await this.redis.del(this.cacheKey(userId));
+  }
+
+  /** Permisos del usuario que empiezan por `${prefix}.` — usado por los endpoints GET .../context de cada módulo. */
+  async getPermissionsByPrefix(userId: string, companyId: string, prefix: string): Promise<string[]> {
+    const all = await this.getPermissions(userId, companyId);
+    return all.filter((p) => p.startsWith(`${prefix}.`));
   }
 
   /* ---------- Profiles ---------- */
