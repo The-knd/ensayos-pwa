@@ -47,6 +47,13 @@ const TABS = [
   { id: 'companies', label: 'Empresas' },
 ];
 
+const OPERATIONS = [
+  { value: 'read', label: 'Leer' },
+  { value: 'create', label: 'Crear' },
+  { value: 'update', label: 'Editar' },
+  { value: 'delete', label: 'Eliminar' },
+];
+
 export function ConfigPage() {
   const { bootstrap, moduleContexts, loadModuleContext, refreshBootstrap } = useAuth();
   const navigate = useNavigate();
@@ -71,7 +78,7 @@ export function ConfigPage() {
 
   const [placements, setPlacements] = useState<PlacementItem[]>([]);
   const [newPlacement, setNewPlacement] = useState({
-    key: '', module: '', label: '', placement: 'grid' as 'grid' | 'fab', position: 0, path: '', perm: '', flag: '', enabled: true,
+    key: '', module: '', label: '', placement: 'grid' as 'grid' | 'fab', position: 0, path: '', perm: '', flag: '', enabled: true, actions: ['read'] as string[],
   });
   const [editPlacementId, setEditPlacementId] = useState<string | null>(null);
   const [editPlacement, setEditPlacement] = useState<Partial<PlacementItem>>({});
@@ -129,16 +136,31 @@ export function ConfigPage() {
     httpClient.get('/config/modules').then((res) => setPlacements(res.data || [])).catch(() => setPlacements([]));
   };
 
+  const toggleAction = (value: string) => {
+    setNewPlacement((prev) => {
+      const selected = prev.actions.includes(value)
+        ? prev.actions.filter((a) => a !== value)
+        : [...prev.actions, value];
+      return { ...prev, actions: selected.length > 0 ? selected : ['read'] };
+    });
+  };
+
   const createPlacement = async () => {
     setError('');
     try {
+      const perm = newPlacement.perm.trim() ||
+        (newPlacement.module && newPlacement.actions[0]
+          ? `${newPlacement.module}.${newPlacement.actions[0]}`
+          : '');
       const payload = {
         ...newPlacement,
+        perm,
+        actions: newPlacement.actions,
         flag: newPlacement.flag || undefined,
         position: Number(newPlacement.position) || 0,
       };
       await httpClient.post('/config/modules', payload);
-      setNewPlacement({ key: '', module: '', label: '', placement: 'grid', position: 0, path: '', perm: '', flag: '', enabled: true });
+      setNewPlacement({ key: '', module: '', label: '', placement: 'grid', position: 0, path: '', perm: '', flag: '', enabled: true, actions: ['read'] });
       loadPlacements();
       await refreshBootstrap();
     } catch (err: any) {
@@ -448,6 +470,21 @@ export function ConfigPage() {
                   <div className="field" style={{ flex: 1 }}>
                     <label>Posición</label>
                     <input className="inp" type="number" value={newPlacement.position} onChange={(e) => setNewPlacement({ ...newPlacement, position: Number(e.target.value) })} />
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Operaciones (registra permisos <code>{newPlacement.module ? `${newPlacement.module}.*` : 'modulo.*'}</code>)</label>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
+                    {OPERATIONS.map((op) => (
+                      <label key={op.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={newPlacement.actions.includes(op.value)}
+                          onChange={() => toggleAction(op.value)}
+                        />
+                        {op.label}
+                      </label>
+                    ))}
                   </div>
                 </div>
                 {error && <p style={{ color: 'red', fontSize: 12, marginTop: 8 }}>{error}</p>}

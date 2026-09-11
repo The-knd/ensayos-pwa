@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
 import { Permissions } from '../../commons/decorators/permissions.decorator';
 import { CurrentTenant } from '../../commons/decorators/current-tenant.decorator';
+import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { ModulePlacementsService } from './module-placements.service';
 import { CreatePlacementDto } from './dto/create-placement.dto';
 import { UpdatePlacementDto } from './dto/update-placement.dto';
@@ -22,8 +23,8 @@ export class ModulePlacementsController {
 
   @Post()
   @Permissions('config.update')
-  create(@CurrentTenant() companyId: string, @Body() dto: CreatePlacementDto) {
-    return this.service.create(companyId, dto);
+  create(@CurrentUser() user, @CurrentTenant() companyId: string, @Body() dto: CreatePlacementDto) {
+    return this.service.create(companyId, dto, user.sub);
   }
 
   @Patch(':id')

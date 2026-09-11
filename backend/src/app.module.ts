@@ -14,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { ModulePlacementsModule } from './modules/placements/module-placements.module';
+import { CalculatorModule } from './modules/calculator/calculator.module';
 import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.middleware';
 import { CsrfMiddleware } from './commons/middlewares/csrf.middleware';
 import { envValidationSchema } from './commons/config/env.validation';
@@ -57,6 +58,7 @@ import { TenantContextInterceptor } from './commons/interceptors/tenant-context.
     CreditsModule,
     FeatureFlagsModule,
     ModulePlacementsModule,
+    CalculatorModule,
     HealthModule,
   ],
   providers: [

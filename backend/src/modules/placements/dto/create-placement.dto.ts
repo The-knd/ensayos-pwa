@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsInt, IsOptional, IsBoolean, MaxLength } from 'class-validator';
+import { IsString, IsEnum, IsInt, IsOptional, IsBoolean, MaxLength, IsArray, IsIn } from 'class-validator';
 
 export class CreatePlacementDto {
   @IsString() @MaxLength(60)
@@ -30,4 +30,7 @@ export class CreatePlacementDto {
 
   @IsBoolean() @IsOptional()
   enabled?: boolean;
+
+  @IsArray() @IsOptional() @IsIn(['read', 'create', 'update', 'delete'], { each: true })
+  actions?: string[];
 }

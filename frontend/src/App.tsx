@@ -28,6 +28,7 @@ import { NewProductsPage } from './modules/newProducts/NewProductsPage';
 import { RoutesPage } from './modules/routes/RoutesPage';
 import { BrainPage } from './modules/brain/BrainPage';
 import { ProfilesPage } from './modules/profiles/ProfilesPage';
+import { CalculatorPage } from './modules/calculator/CalculatorPage';
 
 export function App() {
   return (
@@ -181,6 +182,7 @@ export function App() {
           <Route path="/new-products" element={<ProtectedRoute><NewProductsPage /></ProtectedRoute>} />
           <Route path="/routes" element={<ProtectedRoute><RoutesPage /></ProtectedRoute>} />
           <Route path="/brain" element={<ProtectedRoute><BrainPage /></ProtectedRoute>} />
+          <Route path="/calculator" element={<ProtectedRoute><CalculatorPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </BrowserRouter>
