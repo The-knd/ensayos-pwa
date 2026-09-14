@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { httpClient } from '../../shared/api/httpClient';
+import { useAuth } from '../auth/AuthContext';
 
 interface SumResponse {
   result: number;
@@ -7,19 +8,29 @@ interface SumResponse {
 }
 
 export function CalculatorPage() {
+  const { moduleContexts, loadModuleContext } = useAuth();
   const [a, setA] = useState('');
   const [b, setB] = useState('');
   const [result, setResult] = useState<SumResponse | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    loadModuleContext('calculator').catch(() => undefined);
+  }, []);
+
+  const ctx = moduleContexts['calculator'];
+  const perms = ctx?.permissions ?? [];
+  const canSum = perms.includes('calculator.sumar');
+  const canRestar = perms.includes('calculator.restar');
+
+  const handleSubmit = async (op: 'sum' | 'restar', e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setResult(null);
     setBusy(true);
     try {
-      const res = await httpClient.post('/calculator/sum', { a: Number(a), b: Number(b) });
+      const res = await httpClient.post(`/calculator/${op}`, { a: Number(a), b: Number(b) });
       setResult(res.data);
     } catch (err: any) {
       setError(err?.response?.data?.message?.message || 'No se pudo calcular');
@@ -43,7 +54,7 @@ export function CalculatorPage() {
 
       <div className="s2-body">
         <div className="info-card" style={{ padding: 20 }}>
-          <form onSubmit={handleSubmit}>
+          <form>
             <div className="row2">
               <div className="field">
                 <label>A</label>
@@ -73,10 +84,29 @@ export function CalculatorPage() {
 
             {error && <p style={{ color: '#b00020', fontSize: 12, marginTop: 8 }}>{error}</p>}
 
-            <button type="submit" className="btn btn-primary" disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
-              {busy ? 'Calculando…' : 'Sumar'}
-            </button>
-          </form>
+            {!ctx ? (
+              <p className="empty-state">Cargando permisos…</p>
+            ) : (
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                {canSum && (
+                  <button type="button" onClick={(e) => handleSubmit('sum', e)} className="btn btn-primary" disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
+                    Sumar
+                  </button>
+                )}
+                {canRestar && (
+                  <button type="button" onClick={(e) => handleSubmit('restar', e)} className="btn btn-ghost" disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
+                    Restar
+                  </button>
+                )}
+                {!canSum && !canRestar && (
+                  <p className="empty-state" style={{ textAlign: 'left', margin: 0 }}>
+                    No tenés operaciones habilitadas para este módulo. Pedí al admin que te otorgue
+                    <code> calculator.sumar</code> / <code>calculator.restar</code> desde Perfiles → Permisos.
+                  </p>
+                )}
+              </div>
+            )}
+          </form><span style={{ fontSize: 11, color: 'var(--faint)' }}>Se muestran solo las operaciones habilitadas para tu perfil.</span>
 
           {result && (
             <div

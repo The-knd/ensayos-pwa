@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
 import { Permissions } from '../../commons/decorators/permissions.decorator';
@@ -8,6 +8,7 @@ import { UsersService } from './users.service';
 import { RbacService } from '../rbac/rbac.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { SUPER_ADMIN_PROFILE_ID } from '../../commons/constants';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -16,12 +17,6 @@ export class UsersController {
     private service: UsersService,
     private rbacService: RbacService,
   ) {}
-
-  @Get('context')
-  async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
-    const permissions = await this.rbacService.getPermissionsByPrefix(user.sub, companyId, 'users');
-    return { permissions, featureFlags: {} };
-  }
 
   @Get('profiles')
   @Permissions('users.read')
@@ -33,33 +28,59 @@ export class UsersController {
 
   @Get()
   @Permissions('users.read')
-  findAll(@CurrentUser() user, @CurrentTenant() companyId: string, @Query('companyId') requestedCompanyId?: string) {
-    const isSuperAdmin = user.profileId === 'aaaaaaaa-0000-4000-8000-000000000001';
-    const effectiveCompanyId = (requestedCompanyId && isSuperAdmin) ? requestedCompanyId : companyId;
-    return this.service.findAll(effectiveCompanyId);
+  findAll(@CurrentUser() user, @CurrentTenant() companyId: string) {
+    return this.service.findAll(companyId);
   }
 
   @Post()
   @Permissions('users.create')
-  create(@CurrentTenant() companyId: string, @Body() dto: CreateUserDto) {
+  create(
+    @CurrentUser() user,
+    @CurrentTenant() companyId: string | null,
+    @Body() dto: CreateUserDto,
+  ) {
+    const isSuperAdmin = user.profileId === SUPER_ADMIN_PROFILE_ID;
+    // El super_admin es un rol de sistema: solo el superadmin puede asignarlo
+    // y nunca lleva empresa vinculada.
+    if (!isSuperAdmin && dto.profileId === SUPER_ADMIN_PROFILE_ID) {
+      throw new ForbiddenException('El perfil super_admin es de sistema; solo el superadmin puede asignarlo');
+    }
+    if (dto.profileId === SUPER_ADMIN_PROFILE_ID) {
+      return this.service.create(null, dto);
+    }
+    if (isSuperAdmin) {
+      if (!dto.companyId) {
+        throw new BadRequestException('El superadmin debe indicar la empresa principal del usuario');
+      }
+      return this.service.create(dto.companyId, dto);
+    }
     return this.service.create(companyId, dto);
   }
 
   @Patch(':id')
   @Permissions('users.update')
-  update(@Param('id') id: string, @CurrentTenant() companyId: string, @Body() dto: UpdateUserDto) {
+  update(
+    @CurrentUser() user,
+    @Param('id') id: string,
+    @CurrentTenant() companyId: string | null,
+    @Body() dto: UpdateUserDto,
+  ) {
+    const isSuperAdmin = user.profileId === SUPER_ADMIN_PROFILE_ID;
+    if (dto.companyId !== undefined && !isSuperAdmin) {
+      throw new ForbiddenException('Solo el superadmin puede reasignar la empresa de un usuario');
+    }
     return this.service.update(id, companyId, dto);
   }
 
   @Patch(':id/status')
   @Permissions('users.update')
-  toggleStatus(@Param('id') id: string, @CurrentTenant() companyId: string) {
+  toggleStatus(@Param('id') id: string, @CurrentTenant() companyId: string | null) {
     return this.service.toggleStatus(id, companyId);
   }
 
   @Delete(':id')
   @Permissions('users.delete')
-  remove(@Param('id') id: string, @CurrentTenant() companyId: string) {
+  remove(@Param('id') id: string, @CurrentTenant() companyId: string | null) {
     return this.service.remove(id, companyId);
   }
 }

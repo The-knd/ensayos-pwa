@@ -10,6 +10,7 @@ import { User, UserStatus } from '../users/entities/user.entity';
 import { Device } from './entities/device.entity';
 import { Company } from '../config/entities/company.entity';
 import { RbacService } from '../rbac/rbac.service';
+import { SUPER_ADMIN_PROFILE_ID } from '../../commons/constants';
 
 /**
  * Lógica de sesión/tokens extraída de AuthController: emisión y rotación de
@@ -60,7 +61,8 @@ export class AuthService {
     return refreshTokenValue;
   }
 
-  async issueTokensRes(userId: string, companyId: string, permissionsVersion: number, res: Response) {
+  /** companyId null = sesión de superadmin (selector global o acceso a otra empresa). */
+  async issueTokensRes(userId: string, companyId: string | null, permissionsVersion: number, res: Response) {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
     const accessToken = this.jwtService.sign({
       sub: userId,
@@ -74,6 +76,20 @@ export class AuthService {
     this.setAccessTokenCookie(res, accessToken);
     this.setRefreshTokenCookie(res, refreshTokenValue);
     await this.rbacService.invalidateCache(userId);
+  }
+
+  /** Switch de empresa del superadmin: entra a una empresa concreta (companyId) o vuelve al selector global (null). */
+  async switchCompany(user: { sub: string; profileId: string; permissionsVersion: number }, companyId: string | null, res: Response) {
+    if (user.profileId !== SUPER_ADMIN_PROFILE_ID) {
+      throw new UnauthorizedException('Solo el superadmin puede cambiar de empresa');
+    }
+    if (companyId) {
+      const company = await this.companyRepo.findOne({ where: { id: companyId, isActive: true } });
+      if (!company) throw new UnauthorizedException('Empresa no encontrada o inactiva');
+    }
+    const clean = companyId ?? null;
+    await this.issueTokensRes(user.sub, clean, user.permissionsVersion, res);
+    return { success: true, companyId: clean };
   }
 
   listActiveCompanies() {
@@ -112,7 +128,7 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign({
       sub: user.id,
-      companyId: user.companyId,
+      companyId: user.profileId === SUPER_ADMIN_PROFILE_ID ? null : user.companyId,
       permissionsVersion: user.permissionsVersion,
       profileId: user.profileId,
     });
@@ -133,12 +149,12 @@ export class AuthService {
     return { success: true };
   }
 
-  async checkPasskeys(body: { email: string; companyId: string }) {
-    if (!body?.email || !body?.companyId) {
+  async checkPasskeys(body: { email: string }) {
+    if (!body?.email) {
       return { hasPasskeys: false };
     }
     const user = await this.userRepo.findOne({
-      where: { email: body.email, companyId: body.companyId, status: UserStatus.ACTIVE },
+      where: { email: body.email, status: UserStatus.ACTIVE },
     });
     if (!user) return { hasPasskeys: false };
     const count = await this.deviceRepo.count({ where: { userId: user.id } });

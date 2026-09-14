@@ -35,7 +35,7 @@ export function CreditPortfolioPage() {
       .catch((err: any) => setError(err?.response?.data?.message || 'No se pudieron cargar los créditos'));
   }, []);
 
-  const primary = bootstrap?.company.theme.primaryColor || '#0057B8';
+  const primary = bootstrap?.company?.theme.primaryColor || '#0057B8';
 
   return (
     <div className="s2">

@@ -10,7 +10,7 @@ interface Device {
 }
 
 export function ProfilePage() {
-  const { bootstrap, logout } = useAuth();
+  const { bootstrap, logout, exitCompany, isSuperAccount } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceName, setDeviceName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,7 +19,7 @@ export function ProfilePage() {
 
   const name = bootstrap?.user.name || '';
   const email = bootstrap?.user.email || '';
-  const companyName = bootstrap?.company.name || '';
+  const companyName = bootstrap?.company?.name || '';
 
   const loadDevices = () => {
     httpClient
@@ -150,6 +150,11 @@ export function ProfilePage() {
         {msg && <div className="error-msg" style={{ background: 'var(--green-soft)', color: 'var(--green-deep)', borderColor: 'rgba(62,155,97,0.2)', marginTop: 12 }}>{msg}</div>}
         {error && <div className="error-msg" style={{ marginTop: 12 }}>{error}</div>}
 
+        {isSuperAccount && (
+          <button className="btn btn-ghost" style={{ marginTop: 10 }} onClick={() => exitCompany()}>
+            Volver al selector de empresas
+          </button>
+        )}
         <button className="btn btn-ghost" style={{ marginTop: 10 }} onClick={logout}>
           Cerrar sesión
         </button>

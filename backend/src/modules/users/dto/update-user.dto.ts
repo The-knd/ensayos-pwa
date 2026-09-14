@@ -18,4 +18,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  /** Solo aplicable por el superadmin (reasignar la empresa principal del usuario). */
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
 }

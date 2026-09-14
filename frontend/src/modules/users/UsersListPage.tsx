@@ -16,13 +16,16 @@ interface Profile {
   name: string;
 }
 
+const SUPER_ADMIN_PROFILE_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
+
 export function UsersListPage() {
-  const { moduleContexts, loadModuleContext } = useAuth();
+  const { moduleContexts, loadModuleContext, isSuperAccount } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [ctx, setCtx] = useState(moduleContexts['users']);
   const [showForm, setShowForm] = useState(false);
-  const [newUser, setNewUser] = useState({ email: '', fullName: '', password: '', profileId: '' });
+  const [newUser, setNewUser] = useState({ email: '', fullName: '', password: '', profileId: '', companyId: '' });
   const [editUserId, setEditUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState({ fullName: '', email: '', profileId: '' });
   const [error, setError] = useState('');
@@ -33,6 +36,11 @@ export function UsersListPage() {
       .get('/users/profiles')
       .then((res) => setProfiles((res.data || []).map((p: any) => ({ id: p.id, name: p.name }))))
       .catch(() => setProfiles([]));
+  const loadCompanies = () =>
+    httpClient
+      .get('/config/companies')
+      .then((res) => setCompanies((res.data || []).map((c: any) => ({ id: c.id, name: c.name }))))
+      .catch(() => setCompanies([]));
 
   useEffect(() => {
     loadModuleContext('users')
@@ -43,6 +51,10 @@ export function UsersListPage() {
         loadProfiles();
       });
   }, []);
+
+  useEffect(() => {
+    if (isSuperAccount) loadCompanies();
+  }, [isSuperAccount]);
 
   const toggleStatus = (u: User) =>
     httpClient.patch(`/users/${u.id}/status`).then(loadUsers);
@@ -56,8 +68,17 @@ export function UsersListPage() {
   const createUser = async () => {
     setError('');
     try {
-      await httpClient.post('/users', newUser);
-      setNewUser({ email: '', fullName: '', password: '', profileId: '' });
+      // El perfil super_admin es de sistema: no se le asigna ninguna empresa.
+      const isSystemProfile = newUser.profileId === SUPER_ADMIN_PROFILE_ID;
+      if (isSuperAccount && !isSystemProfile && !newUser.companyId) {
+        setError('Debés indicar la empresa principal del usuario.');
+        return;
+      }
+      const payload = isSuperAccount
+        ? { ...newUser, companyId: isSystemProfile ? undefined : newUser.companyId }
+        : newUser;
+      await httpClient.post('/users', payload);
+      setNewUser({ email: '', fullName: '', password: '', profileId: '', companyId: '' });
       setShowForm(false);
       loadUsers();
     } catch (err: any) {
@@ -83,12 +104,16 @@ export function UsersListPage() {
   };
 
   const profileOptions = (currentProfileId?: string) => {
-    const opts = [...profiles];
+    let opts = profiles.filter((p) => isSuperAccount || p.id !== SUPER_ADMIN_PROFILE_ID);
     if (currentProfileId && !opts.find((p) => p.id === currentProfileId)) {
       opts.unshift({ id: currentProfileId, name: 'Perfil actual' });
     }
     return opts;
   };
+
+  const visibleProfiles = () => profiles.filter((p) => isSuperAccount || p.id !== SUPER_ADMIN_PROFILE_ID);
+
+  const selectedIsSystemProfile = newUser.profileId === SUPER_ADMIN_PROFILE_ID;
 
   if (!ctx) return <p style={{ padding: 40 }}>Cargando...</p>;
 
@@ -128,11 +153,28 @@ export function UsersListPage() {
               <div className="sel">
                 <select value={newUser.profileId} onChange={(e) => setNewUser({ ...newUser, profileId: e.target.value })}>
                   <option value="">Seleccionar perfil</option>
-                  {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {visibleProfiles().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </div>
             </div>
+            {isSuperAccount && selectedIsSystemProfile && (
+              <p style={{ fontSize: 11, background: 'var(--accent-soft)', padding: '6px 10px', borderRadius: 8, marginBottom: 4 }}>
+                El perfil super_admin es un rol de sistema: no se le asigna ninguna empresa.
+              </p>
+            )}
+            {isSuperAccount && !selectedIsSystemProfile && (
+              <div className="field">
+                <label>Empresa principal</label>
+                <div className="sel">
+                  <select value={newUser.companyId} onChange={(e) => setNewUser({ ...newUser, companyId: e.target.value })}>
+                    <option value="">Seleccionar empresa</option>
+                    {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+              </div>
+            )}
             {error && <p style={{ color: 'red', fontSize: 12 }}>{error}</p>}
             <div className="row2">
               <button className="btn btn-primary" onClick={createUser}>Crear</button>

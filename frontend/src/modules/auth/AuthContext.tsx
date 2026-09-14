@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { httpClient } from '../../shared/api/httpClient';
 
-interface ModulePlacement {
+export interface ModulePlacement {
   id: string;
   key: string;
   module: string;
@@ -12,12 +12,64 @@ interface ModulePlacement {
   perm: string;
   flag: string | null;
   logoUrl: string | null;
+  icon: string | null;
   enabled: boolean;
+  /** Variante por empresa: configuración libre que adapta el comportamiento del módulo. */
+  config?: Record<string, unknown>;
+  /** Operaciones activas del módulo en esta empresa ([] = todas). */
+  enabledOperations?: string[];
+}
+
+export interface ModuleVariant {
+  id: string;
+  moduleId: string;
+  companyId: string;
+  companyName: string | null;
+  label: string | null;
+  icon: string | null;
+  path: string | null;
+  config: Record<string, unknown>;
+  enabledOperations: string[];
+}
+
+export interface CompanySummary {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  primaryColor: string;
+}
+
+export interface ModuleView {
+  id: string;
+  scope: 'company' | 'global';
+  companyId: string | null;
+  companyName: string | null;
+  key: string;
+  module: string;
+  label: string;
+  icon: string | null;
+  path: string;
+  operations: { action: string; name: string }[];
+  enabled: boolean;
+  flag: string | null;
+  ownerAssignment: { companyId: string; placement: 'grid' | 'fab'; position: number; enabled: boolean } | null;
+  published: {
+    companyId: string;
+    companyName: string | null;
+    placement: 'grid' | 'fab';
+    position: number;
+    enabled: boolean;
+  }[];
+  variants: ModuleVariant[];
+  /** true cuando el admin ve un módulo compartido (de otra empresa) asignado a la suya. */
+  isShared?: boolean;
 }
 
 interface BootstrapData {
-  user: { id: string; name: string; email: string };
-  company: { id: string; name: string; theme: { primaryColor: string; logoUrl: string } };
+  user: { id: string; name: string; email: string; profileId?: string };
+  scope: 'company' | 'superadmin';
+  company: { id: string; name: string; theme: { primaryColor: string; logoUrl: string } } | null;
+  companies: CompanySummary[];
   featureFlags: Record<string, boolean>;
   modulePlacements: ModulePlacement[];
 }
@@ -33,8 +85,11 @@ interface AuthContextValue {
   loadModuleContext: (moduleName: string) => Promise<void>;
   refreshBootstrap: () => Promise<void>;
   resetModuleContexts: () => void;
+  enterCompany: (companyId: string) => Promise<void>;
+  exitCompany: () => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
+  isSuperAccount: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -79,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const primaryColor = bootstrap?.company.theme.primaryColor || '#0057B8';
+    const primaryColor = bootstrap?.company?.theme.primaryColor || '#0057B8';
     const root = document.documentElement;
     root.style.setProperty('--accent', primaryColor);
     const rgb = hexToRgb(primaryColor) || '0, 87, 184';
@@ -101,6 +156,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetModuleContexts = () => setModuleContexts({});
 
+  const enterCompany = async (companyId: string) => {
+    await httpClient.post('/auth/company', { companyId });
+    setModuleContexts({});
+    await refreshBootstrap();
+  };
+
+  const exitCompany = async () => {
+    await httpClient.post('/auth/company', { companyId: null });
+    setModuleContexts({});
+    await refreshBootstrap();
+  };
+
   const logout = async () => {
     try {
       await httpClient.post('/auth/logout');
@@ -111,9 +178,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setModuleContexts({});
   };
 
+  const isSuperAccount = !!bootstrap?.user.email?.toLowerCase().startsWith('superadmin@');
+
   return (
     <AuthContext.Provider
-      value={{ bootstrap, moduleContexts, loadModuleContext, refreshBootstrap, resetModuleContexts, logout, isLoading }}
+      value={{
+        bootstrap,
+        moduleContexts,
+        loadModuleContext,
+        refreshBootstrap,
+        resetModuleContexts,
+        enterCompany,
+        exitCompany,
+        logout,
+        isLoading,
+        isSuperAccount,
+      }}
     >
       {children}
     </AuthContext.Provider>

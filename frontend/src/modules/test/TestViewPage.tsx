@@ -31,7 +31,7 @@ export function TestViewPage() {
           </div>
           <div className="info-row" style={{ borderBottom: 0 }}>
             <span className="info-label">Empresa</span>
-            <span className="info-value">{bootstrap?.company.name} ({bootstrap?.company.id.slice(0, 8)}…)</span>
+            <span className="info-value">{bootstrap?.company?.name || '—'} ({bootstrap?.company?.id?.slice(0, 8) || '—'}…)</span>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import { User } from '../users/entities/user.entity';
 import { Profile } from './entities/profile.entity';
 import { Permission } from './entities/permission.entity';
 import { ProfilePermission } from './entities/profile-permission.entity';
+import { SUPER_ADMIN_PROFILE_ID, ADMIN_PROFILE_ID, VENDEDOR_PROFILE_ID } from '../../commons/constants';
 import Redis from 'ioredis';
 
 @Injectable()
@@ -21,13 +22,14 @@ export class RbacService {
     return `rbac:permissions:${userId}`;
   }
 
-  private static readonly MODULE_ACTIONS = ['read', 'create', 'update', 'delete'];
-
   /**
-   * Auto-registro de permisos al crear un módulo: hace upsert de `resource.action`
-   * en permissions (code UNIQUE) y los asigna a los perfiles destino. Por defecto
-   * asigna a los perfiles de sistema (super_admin/admin/vendedor) para que quien
-   * crea el módulo pueda verlo/operarlo de inmediato. Idempotente.
+   * Auto-registro de permisos al crear/actualizar un módulo: hace upsert de
+   * `resource.action` en permissions (code UNIQUE). Por defecto **no asigna a
+   * ningún perfil**: los permisos recién registrados quedan deshabilitados para
+   * todos los usuarios y se habilitan a mano desde la gestión de perfiles
+   * (`/profiles/:id/permissions`, superadmin en todas las empresas o el admin de
+   * su propia empresa). El superadmin ya accede a todo de forma directa.
+   * Idempotente.
    *
    * Acepta un `manager` opcional (EntityManager de transacción): los callers que
    * operan dentro de `dataSource.transaction` lo pasan para que la creación del
@@ -39,12 +41,14 @@ export class RbacService {
     profileIds?: string[],
     manager?: EntityManager,
   ): Promise<void> {
-    const targets = actions.filter((a) => RbacService.MODULE_ACTIONS.includes(a));
+    // Se registra UNA permisión por cada acción del módulo (CRUD u operación
+    // custom como `sumar`/`restar`), pero sin otorgarla a ningún perfil: queda
+    // a disposición para que el admin la asigne (idempotente vía code UNIQUE).
+    const targets = Array.from(new Set(actions));
     if (targets.length === 0) return;
 
     const em = manager ?? this.permissionRepo.manager;
-    const profileTargets =
-      profileIds ?? (await em.find(Profile, { where: { isSystemRole: true } })).map((p) => p.id);
+    const profileTargets = profileIds ?? [];
 
     for (const action of targets) {
       const code = `${resource}.${action}`;
@@ -63,15 +67,26 @@ export class RbacService {
     }
   }
 
-  async getPermissions(userId: string, companyId: string): Promise<string[]> {
+  async getPermissions(userId: string, companyId: string | null): Promise<string[]> {
     const cached = await this.redis.get(this.cacheKey(userId));
     if (cached) return JSON.parse(cached);
 
-    // Mismo alcance que la query cruda anterior: si el usuario no existe o no
-    // pertenece a companyId, no hay permisos (nunca se filtran por perfil de
-    // otra empresa).
-    const user = await this.userRepo.findOne({ where: { id: userId, companyId } });
-    const permissions = user ? await this.getProfilePermissions(user.profileId) : [];
+    // companyId null == sesión de superadmin (selector global) o superadmin
+    // operando sobre otra empresa: el perfil se resuelve por id del usuario.
+    // Un superadmin dentro de una empresa ajena no está en la lista de usuarios
+    // de esa empresa, así que si la búsqueda por (id, company) falla, se busca
+    // por id únicamente (no hay escalada: los tokens fijan la empresa del usuario).
+    const user =
+      (companyId &&
+        (await this.userRepo.findOne({ where: { id: userId, companyId } }))) ||
+      (await this.userRepo.findOne({ where: { id: userId } }));
+
+    let permissions: Permission[];
+    if (user && user.profileId === SUPER_ADMIN_PROFILE_ID) {
+      permissions = await this.permissionRepo.find();
+    } else {
+      permissions = user ? await this.getProfilePermissions(user.profileId) : [];
+    }
     const codes = permissions.map((p) => p.code);
 
     await this.redis.set(this.cacheKey(userId), JSON.stringify(codes), 'EX', 120);
@@ -83,21 +98,56 @@ export class RbacService {
   }
 
   /** Permisos del usuario que empiezan por `${prefix}.` — usado por los endpoints GET .../context de cada módulo. */
-  async getPermissionsByPrefix(userId: string, companyId: string, prefix: string): Promise<string[]> {
+  async getPermissionsByPrefix(userId: string, companyId: string | null, prefix: string): Promise<string[]> {
     const all = await this.getPermissions(userId, companyId);
     return all.filter((p) => p.startsWith(`${prefix}.`));
   }
 
   /* ---------- Profiles ---------- */
 
-  findProfiles(companyId: string) {
+  findProfiles(companyId: string | null) {
+    // Perfiles de sistema: solo super_admin es global (compartido). admin/vendedor
+    // ahora son POR EMPRESA (clones con mismo nombre, permisos independientes);
+    // sus plantillas globales quedan ocultas y se usan solo para clonar.
+    if (companyId) {
+      return this.profileRepo.find({
+        where: [
+          { companyId },
+          { companyId: IsNull(), id: SUPER_ADMIN_PROFILE_ID },
+        ],
+        order: { name: 'ASC' },
+      });
+    }
     return this.profileRepo.find({
-      where: [
-        { companyId },
-        { companyId: IsNull() },
-      ],
+      where: { id: SUPER_ADMIN_PROFILE_ID },
       order: { name: 'ASC' },
     });
+  }
+
+  /**
+   * Asegura los perfiles de sistema `admin` y `vendedor` de una empresa, creados
+   * como clones de la plantilla global (cada empresa configura los suyos). Se
+   * invoca al crear una empresa en runtime. Idempotente.
+   */
+  async ensureCompanyProfiles(companyId: string): Promise<void> {
+    for (const template of [
+      { id: ADMIN_PROFILE_ID, name: 'admin' },
+      { id: VENDEDOR_PROFILE_ID, name: 'vendedor' },
+    ]) {
+      const existing = await this.profileRepo.findOne({ where: { name: template.name, companyId } });
+      if (existing) continue;
+      const tpl = await this.profileRepo.findOne({ where: { id: template.id } });
+      if (!tpl) continue;
+      const clone = await this.profileRepo.save(
+        this.profileRepo.create({ name: template.name, companyId, isSystemRole: true }),
+      );
+      const grants = await this.profilePermRepo.find({ where: { profileId: template.id } });
+      if (grants.length) {
+        await this.profilePermRepo.save(
+          grants.map((g) => this.profilePermRepo.create({ profileId: clone.id, permissionId: g.permissionId })),
+        );
+      }
+    }
   }
 
   async createProfile(companyId: string, name: string) {

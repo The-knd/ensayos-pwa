@@ -5,7 +5,7 @@ import { AppBar } from '../../shared/components/AppBar';
 export function CreditsHomePage() {
   const navigate = useNavigate();
   const { bootstrap } = useAuth();
-  const logo = bootstrap?.company.theme.logoUrl || undefined;
+  const logo = bootstrap?.company?.theme.logoUrl || undefined;
 
   return (
     <div className="s2 flow credit-shell">

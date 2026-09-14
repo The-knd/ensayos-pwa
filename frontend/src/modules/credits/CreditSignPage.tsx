@@ -53,7 +53,7 @@ export function CreditSignPage() {
   if (error && !credit) {
     return (
       <div className="s2 credit-shell">
-        <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+        <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company?.theme.logoUrl || undefined} />
         <div className="body" style={{ paddingBottom: 24 }}>
           <div className="card" style={{ borderColor: '#f6caca', background: '#fdecec', color: '#c62828', fontSize: 12, fontWeight: 600 }}>
             {error}
@@ -66,7 +66,7 @@ export function CreditSignPage() {
   if (!credit) {
     return (
       <div className="s2 credit-shell">
-        <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+        <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company?.theme.logoUrl || undefined} />
         <div className="body" style={{ color: 'var(--muted)', fontSize: 13 }}>Cargando…</div>
       </div>
     );
@@ -78,7 +78,7 @@ export function CreditSignPage() {
 
   return (
     <div className="s2 credit-shell">
-      <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+      <AppBar title="Firma del pagaré" subtitle="Paso 3 de 4" logo={bootstrap?.company?.theme.logoUrl || undefined} />
       <div className="body" style={{ paddingBottom: 24 }}>
         <CreditStepper current={3} />
 

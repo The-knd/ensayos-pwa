@@ -23,8 +23,14 @@ export class CalculatorController {
   }
 
   @Post('sum')
-  @Permissions('calculator.read')
+  @Permissions('calculator.sumar')
   sum(@Body() dto: SumDto) {
     return this.service.sum(dto);
+  }
+
+  @Post('restar')
+  @Permissions('calculator.restar')
+  subtract(@Body() dto: SumDto) {
+    return this.service.subtract(dto);
   }
 }

@@ -4,64 +4,35 @@ import { useAuth } from './AuthContext';
 import { httpClient } from '../../shared/api/httpClient';
 import { startAuthentication } from '@simplewebauthn/browser';
 
-interface AuthCompany {
-  id: string;
-  name: string;
-  logoUrl: string | null;
-  primaryColor: string;
-}
-
-const fallbackCompanies: AuthCompany[] = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'Herragro', logoUrl: null, primaryColor: '#1565C0' },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'Adylog', logoUrl: null, primaryColor: '#E2602B' },
-  { id: '33333333-3333-3333-3333-333333333333', name: 'Toptec', logoUrl: null, primaryColor: '#27AE60' },
-];
-
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [companies, setCompanies] = useState<AuthCompany[]>(fallbackCompanies);
-  const [companyId, setCompanyId] = useState('11111111-1111-1111-1111-111111111111');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [uiMode, setUiMode] = useState<'form' | 'has-passkey' | 'loading'>('loading');
   const navigate = useNavigate();
   const { refreshBootstrap, resetModuleContexts } = useAuth();
 
-  // Cargar empresas
-  useEffect(() => {
-    httpClient
-      .get('/auth/companies')
-      .then((res) => {
-        const list: AuthCompany[] = res.data || [];
-        if (list.length > 0) {
-          setCompanies(list);
-          const current = list.find((c) => c.id === companyId);
-          setCompanyId(current ? current.id : list[0].id);
-        }
-      })
-      .catch(() => setCompanies(fallbackCompanies));
-  }, []);
-
   // Verificar passkey automáticamente al cargar si hay email guardado
   useEffect(() => {
     const savedEmail = localStorage.getItem('lastEmail');
     if (savedEmail) {
       setEmail(savedEmail);
-      checkPasskeys(savedEmail, companyId);
+      checkPasskeys(savedEmail);
     } else {
       setUiMode('form');
     }
-  }, [companyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const checkPasskeys = async (emailToCheck: string, cid: string) => {
+  const checkPasskeys = async (emailToCheck: string) => {
     try {
-      const res = await httpClient.post('/auth/passkeys/check', { email: emailToCheck, companyId: cid });
+      const res = await httpClient.post('/auth/passkeys/check', { email: emailToCheck });
       if (res.data?.hasPasskeys) {
         setUiMode('has-passkey');
         // Intento automático tras un pequeño delay para que el usuario vea la UI
         setTimeout(() => {
-          handlePasskeyAuto(emailToCheck, cid);
+          handlePasskeyAuto(emailToCheck);
         }, 600);
       } else {
         setUiMode('form');
@@ -72,6 +43,7 @@ export function LoginPage() {
   };
 
   const finishLogin = async () => {
+    localStorage.setItem('lastEmail', email);
     resetModuleContexts();
     await refreshBootstrap();
     navigate('/home');
@@ -82,8 +54,7 @@ export function LoginPage() {
     setError('');
     setBusy(true);
     try {
-      await httpClient.post('/auth/login', { email, password, companyId });
-      localStorage.setItem('lastEmail', email);
+      await httpClient.post('/auth/login', { email, password });
       await finishLogin();
     } catch (err: any) {
       setError(err?.response?.data?.message?.message || 'Credenciales inválidas');
@@ -92,14 +63,14 @@ export function LoginPage() {
     }
   };
 
-  const handlePasskeyAuto = async (emailToUse: string, cid: string) => {
+  const handlePasskeyAuto = async (emailToUse: string) => {
     setBusy(true);
     setError('');
     try {
-      const optionsRes = await httpClient.post('/auth/passkeys/login/options', { email: emailToUse, companyId: cid });
+      const optionsRes = await httpClient.post('/auth/passkeys/login/options', { email: emailToUse });
       const options = optionsRes.data;
       const credential = await startAuthentication(options);
-      await httpClient.post('/auth/passkeys/login/verify', { email: emailToUse, companyId: cid, response: credential });
+      await httpClient.post('/auth/passkeys/login/verify', { email: emailToUse, response: credential });
       localStorage.setItem('lastEmail', emailToUse);
       await finishLogin();
     } catch (err: any) {
@@ -120,7 +91,7 @@ export function LoginPage() {
       setError('Ingresa tu correo para iniciar con passkey');
       return;
     }
-    handlePasskeyAuto(email, companyId);
+    handlePasskeyAuto(email);
   };
 
   const today = new Date().toLocaleDateString('es-CO', {
@@ -130,15 +101,13 @@ export function LoginPage() {
     day: 'numeric',
   });
 
-  const selected = companies.find((c) => c.id === companyId);
-
   return (
     <div className="s1">
-      <div className="s1-hero" style={{ background: `linear-gradient(160deg, ${selected?.primaryColor || '#1356a0'}, #0c3567)` }}>
+      <div className="s1-hero" style={{ background: 'linear-gradient(160deg, #1356a0, #0c3567)' }}>
         <div className="org-row">
           <div className="org-chip">
             <span className="org-dot" />
-            {selected?.name || 'PWA App'}
+            PWA App
           </div>
         </div>
         <div className="s1-date">
@@ -185,7 +154,7 @@ export function LoginPage() {
                   }}
                   onBlur={(e) => {
                     if (e.target.value && uiMode !== 'has-passkey') {
-                      checkPasskeys(e.target.value, companyId);
+                      checkPasskeys(e.target.value);
                     }
                   }}
                   placeholder="tu@empresa.com"
@@ -206,18 +175,6 @@ export function LoginPage() {
                   placeholder="••••••••"
                   autoComplete="current-password"
                 />
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Empresa</label>
-              <div className="sel">
-                <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </div>
             </div>
 

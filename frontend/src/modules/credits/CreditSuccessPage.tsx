@@ -50,7 +50,7 @@ export function CreditSuccessPage() {
       <div className="okhero">
         <div className="hrow" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 800, fontSize: 12 }}>{disbursed ? '¡Desembolso exitoso!' : '¡Firma exitosa!'}</span>
-          {bootstrap?.company.theme.logoUrl && (
+          {bootstrap?.company?.theme.logoUrl && (
             <img className="alogo" src={bootstrap.company.theme.logoUrl} alt="logo" style={{ height: 26, filter: 'brightness(0) invert(1)' }} />
           )}
         </div>

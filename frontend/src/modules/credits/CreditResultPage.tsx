@@ -67,7 +67,7 @@ export function CreditResultPage() {
   if (error && !credit) {
     return (
       <div className="s2 credit-shell">
-        <AppBar title="Resultado del crédito" subtitle="Paso 2 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+        <AppBar title="Resultado del crédito" subtitle="Paso 2 de 4" logo={bootstrap?.company?.theme.logoUrl || undefined} />
         <div className="body" style={{ paddingBottom: 24 }}>
           <div className="card" style={{ borderColor: '#f6caca', background: '#fdecec', color: '#c62828', fontSize: 12, fontWeight: 600 }}>
             {error}
@@ -80,7 +80,7 @@ export function CreditResultPage() {
   if (!credit) {
     return (
       <div className="s2 credit-shell">
-        <AppBar title="Resultado del crédito" subtitle="Paso 2 de 4" logo={bootstrap?.company.theme.logoUrl || undefined} />
+        <AppBar title="Resultado del crédito" subtitle="Paso 2 de 4" logo={bootstrap?.company?.theme.logoUrl || undefined} />
         <div className="body" style={{ color: 'var(--muted)', fontSize: 13 }}>Cargando…</div>
       </div>
     );
@@ -92,7 +92,7 @@ export function CreditResultPage() {
 
   return (
     <div className="s2 credit-shell">
-      <AppBar title="Resultado del crédito" subtitle={clientName} logo={bootstrap?.company.theme.logoUrl || undefined} />
+      <AppBar title="Resultado del crédito" subtitle={clientName} logo={bootstrap?.company?.theme.logoUrl || undefined} />
       <div className="body" style={{ paddingBottom: 24 }}>
         <CreditStepper current={2} />
 

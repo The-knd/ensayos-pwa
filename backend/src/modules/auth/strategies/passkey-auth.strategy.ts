@@ -11,6 +11,7 @@ import {
 import { Device } from '../entities/device.entity';
 import { User } from '../../users/entities/user.entity';
 import { AuthStrategy, AuthResult } from '../interfaces/auth-strategy.interface';
+import { SUPER_ADMIN_PROFILE_ID } from '../../../commons/constants';
 
 @Injectable()
 export class PasskeyAuthStrategy implements AuthStrategy {
@@ -69,8 +70,8 @@ export class PasskeyAuthStrategy implements AuthStrategy {
     return { verified: true };
   }
 
-  async getAuthenticationOptions(email: string, companyId: string) {
-    const user = await this.userRepo.findOne({ where: { email, companyId } });
+  async getAuthenticationOptions(email: string) {
+    const user = await this.userRepo.findOne({ where: { email } });
     const devices = user ? await this.deviceRepo.find({ where: { userId: user.id } }) : [];
 
     return generateAuthenticationOptions({
@@ -81,10 +82,9 @@ export class PasskeyAuthStrategy implements AuthStrategy {
 
   async authenticate(
     credentials: { response: any; expectedChallenge: string; email: string },
-    companyId: string,
   ): Promise<AuthResult> {
     const user = await this.userRepo.findOne({
-      where: { email: credentials.email, companyId },
+      where: { email: credentials.email },
     });
     const device = user
       ? await this.deviceRepo.findOne({
@@ -113,7 +113,7 @@ export class PasskeyAuthStrategy implements AuthStrategy {
 
     return {
       userId: user.id,
-      companyId: user.companyId,
+      companyId: user.profileId === SUPER_ADMIN_PROFILE_ID ? null : user.companyId,
       permissionsVersion: user.permissionsVersion,
     };
   }

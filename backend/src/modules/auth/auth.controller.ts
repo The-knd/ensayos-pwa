@@ -14,26 +14,25 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
-import { AuthStrategyResolver } from './auth-strategy.resolver';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { SwitchCompanyDto } from './dto/switch-company.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Device } from './entities/device.entity';
+import { LocalAuthStrategy } from './strategies/local-auth.strategy';
 import { PasskeyAuthStrategy } from './strategies/passkey-auth.strategy';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
-import Redis from 'ioredis';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
+import Redis from 'ioredis';
 
 const CHALLENGE_TTL = 300;
 
 @Controller('auth')
 export class AuthController {
   constructor(
-    private resolver: AuthStrategyResolver,
     private authService: AuthService,
-    // La gestión de dispositivos passkey (listar/borrar más abajo) queda
-    // fuera del alcance de la extracción a AuthService — ver nota ahí.
+    private localStrategy: LocalAuthStrategy,
     @InjectRepository(Device) private deviceRepo: Repository<Device>,
     @Inject(Redis) private redis: Redis,
     private passkeyStrategy: PasskeyAuthStrategy,
@@ -74,8 +73,7 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const strategy = await this.resolver.resolve(dto.companyId);
-    const result = await strategy.authenticate(dto, dto.companyId);
+    const result = await this.localStrategy.authenticate(dto);
     await this.authService.issueTokensRes(result.userId, result.companyId, result.permissionsVersion, res);
     return { success: true };
   }
@@ -88,6 +86,22 @@ export class AuthController {
   @Post('logout')
   logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.authService.logout(req, res);
+  }
+
+  // --- Superadmin: cambiar de empresa (o volver al selector global) ---
+
+  @Post('company')
+  @UseGuards(JwtAuthGuard)
+  async switchCompany(
+    @CurrentUser() user,
+    @Body() dto: SwitchCompanyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.authService.switchCompany(
+      { sub: user.sub, profileId: user.profileId, permissionsVersion: user.permissionsVersion },
+      dto.companyId ?? null,
+      res,
+    );
   }
 
   // --- Passkeys: registro (usuario autenticado añade un dispositivo) ---
@@ -120,36 +134,34 @@ export class AuthController {
   // --- Passkeys: inicio de sesión (público) ---
 
   @Post('passkeys/check')
-  checkPasskeys(@Body() body: { email: string; companyId: string }) {
+  checkPasskeys(@Body() body: { email: string }) {
     return this.authService.checkPasskeys(body);
   }
 
   @Post('passkeys/login/options')
-  async loginOptions(@Body() body: { email: string; companyId: string }) {
-    if (!body?.email || !body?.companyId) {
-      throw new BadRequestException('Email y companyId son obligatorios');
+  async loginOptions(@Body() body: { email: string }) {
+    if (!body?.email) {
+      throw new BadRequestException('Email es obligatorio');
     }
-    const options = await this.passkeyStrategy.getAuthenticationOptions(
-      body.email,
-      body.companyId,
-    );
-    await this.saveLoginChallenge(`${body.companyId}:${body.email}`, options.challenge);
+    const options = await this.passkeyStrategy.getAuthenticationOptions(body.email);
+    await this.saveLoginChallenge(`${body.email}`, options.challenge);
     return options;
   }
 
   @Post('passkeys/login/verify')
   async loginVerify(
-    @Body() body: { email: string; companyId: string; response: any },
+    @Body() body: { email: string; response: any },
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (!body?.email || !body?.companyId || !body?.response) {
-      throw new BadRequestException('Email, companyId y response son obligatorios');
+    if (!body?.email || !body?.response) {
+      throw new BadRequestException('Email y response son obligatorios');
     }
-    const challenge = await this.consumeLoginChallenge(`${body.companyId}:${body.email}`);
-    const result = await this.passkeyStrategy.authenticate(
-      { response: body.response, expectedChallenge: challenge, email: body.email },
-      body.companyId,
-    );
+    const challenge = await this.consumeLoginChallenge(`${body.email}`);
+    const result = await this.passkeyStrategy.authenticate({
+      response: body.response,
+      expectedChallenge: challenge,
+      email: body.email,
+    });
     await this.authService.issueTokensRes(result.userId, result.companyId, result.permissionsVersion, res);
     return { success: true };
   }

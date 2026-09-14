@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -39,6 +39,9 @@ const ICONS: Record<string, React.ReactNode> = {
   creditos: (
     <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M2 10h20" stroke="currentColor" strokeWidth="2" /></svg>
   ),
+  calculadora: (
+    <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M9 7h6M9 11h.01M12 11h.01M15 11h.01M9 14h.01M12 14h.01M15 14h.01M9 17h.01M12 17h.01M15 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+  ),
   usuarios: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
   ),
@@ -57,7 +60,8 @@ function genericIcon() {
 }
 
 export function HomePage() {
-  const { bootstrap, moduleContexts, loadModuleContext } = useAuth();
+  const { bootstrap, moduleContexts, loadModuleContext, enterCompany } = useAuth();
+  const navigate = useNavigate();
   const placements = bootstrap?.modulePlacements || [];
   const flags = bootstrap?.featureFlags || {};
 
@@ -85,8 +89,79 @@ export function HomePage() {
     mods.forEach((m) => loadModuleContext(m).catch(() => undefined));
   }, [placements.length]);
 
+  const icon = (p: { key: string; icon: string | null }) => {
+    const url = p.icon && p.icon.startsWith('http') ? p.icon : null;
+    if (url) {
+      return <img className="tile-logo" src={url} alt="" />;
+    }
+    return p.icon && ICONS[p.icon] ? ICONS[p.icon] : ICONS[p.key] || genericIcon();
+  };
+
+  // --- Superadmin: selector global de empresas + configuración global ---
+  if (bootstrap?.scope === 'superadmin') {
+    const companies = bootstrap.companies || [];
+    return (
+      <div className="s2">
+        <div className="s2-head">
+          <div className="s2-top">
+            <div className="org-chip">
+              <span className="org-dot" />
+              Panel superadmin
+            </div>
+          </div>
+          <div className="greet">
+            <div className="welcome">
+              <div className="brand-ava">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 12h.01M9 15h.01M15 9h.01M15 12h.01M15 15h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </div>
+              <div>
+                <h2>Selecciona una empresa</h2>
+                <p className="brand-sub">Entra a la empresa o administra la plataforma.</p>
+              </div>
+            </div>
+          </div>
+          <h1 className="page-title">Empresas</h1>
+          <p className="lead below">Toca una empresa para entrar como visitante o administra la plataforma.</p>
+        </div>
+
+        <div className="s2-body">
+          <div className="hsec">Empresas</div>
+          <div className="grid-3">
+            {companies.map((c) => (
+              <button
+                key={c.id}
+                className="tile"
+                type="button"
+                onClick={() => enterCompany(c.id).then(() => navigate('/home'))}
+                style={{ cursor: 'pointer', border: 'none', font: 'inherit' }}
+              >
+                <div className="ic">
+                  {c.logoUrl ? (
+                    <img className="tile-logo" src={c.logoUrl} alt="" />
+                  ) : (
+                    <span style={{ color: 'var(--accent)' }}>{c.name.slice(0, 1).toUpperCase()}</span>
+                  )}
+                </div>
+                <span>{c.name}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="hsec" style={{ marginTop: 24 }}>Administración</div>
+          <div className="grid-3">
+            <Link to="/global-config" className="tile" style={{ textDecoration: 'none' }}>
+              <div className="ic">{ICONS.config}</div>
+              <span>Configuración global</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Scope empresa ---
   const name = bootstrap?.user.name?.split(' ')[0] || 'Usuario';
-  const company = bootstrap?.company.name || '';
+  const company = bootstrap?.company?.name || '';
 
   return (
     <div className="s2">
@@ -125,7 +200,7 @@ export function HomePage() {
               className="tile"
               style={{ textDecoration: 'none' }}
             >
-              <div className="ic">{ICONS[p.key] || genericIcon()}</div>
+              <div className="ic">{icon(p)}</div>
               <span>{p.label}</span>
             </Link>
           ))}
@@ -137,7 +212,7 @@ export function HomePage() {
           {fabs.map((p) => (
             <Link key={p.id} to={p.path} className="fab-wrap" style={{ textDecoration: 'none' }}>
               <button className="fab" title={p.label}>
-                {ICONS[p.key] || genericIcon()}
+                {icon(p)}
               </button>
               <span className="fab-label">{p.label}</span>
             </Link>

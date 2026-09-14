@@ -29,6 +29,7 @@ import { RoutesPage } from './modules/routes/RoutesPage';
 import { BrainPage } from './modules/brain/BrainPage';
 import { ProfilesPage } from './modules/profiles/ProfilesPage';
 import { CalculatorPage } from './modules/calculator/CalculatorPage';
+import { SuperAdminGlobalConfigPage } from './modules/global/SuperAdminGlobalConfigPage';
 
 export function App() {
   return (
@@ -74,6 +75,14 @@ export function App() {
             element={
               <ProtectedRoute>
                 <ConfigPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/global-config"
+            element={
+              <ProtectedRoute>
+                <SuperAdminGlobalConfigPage />
               </ProtectedRoute>
             }
           />

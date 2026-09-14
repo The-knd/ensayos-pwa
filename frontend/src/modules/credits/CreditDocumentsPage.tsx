@@ -43,7 +43,7 @@ export function CreditDocumentsPage() {
       .catch(() => setError('No se pudieron cargar los documentos'));
   }, [id]);
 
-  const primary = bootstrap?.company.theme.primaryColor || '#0057B8';
+  const primary = bootstrap?.company?.theme.primaryColor || '#0057B8';
 
   return (
     <div className="s2">

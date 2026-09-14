@@ -11,12 +11,13 @@ export enum UserStatus {
 
 @Entity('users')
 export class User extends BaseEntity {
-  @Column({ name: 'company_id' })
-  companyId: string;
+  /** Empresa principal del usuario. NULL = rol de sistema (super_admin). */
+  @Column({ name: 'company_id', type: 'uuid', nullable: true })
+  companyId: string | null = null;
 
-  @ManyToOne(() => Company)
+  @ManyToOne(() => Company, { nullable: true })
   @JoinColumn({ name: 'company_id' })
-  company: Company;
+  company: Company | null;
 
   @Column({ name: 'profile_id' })
   profileId: string;

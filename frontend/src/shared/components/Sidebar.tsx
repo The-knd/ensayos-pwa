@@ -62,12 +62,15 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   profile: (
     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.6" stroke="currentColor" strokeWidth="2" /><path d="M5 20c0-3.4 3.1-6 7-6s7 2.6 7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
   ),
+  globe: (
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" /><path d="M3 12h18M12 3a13 13 0 0 1 0 18a13 13 0 0 1 0-18Z" stroke="currentColor" strokeWidth="2" /></svg>
+  ),
 };
 
 export function Sidebar() {
-  const { bootstrap, moduleContexts, logout } = useAuth();
+  const { bootstrap, moduleContexts, logout, isSuperAccount } = useAuth();
   const navigate = useNavigate();
-  const companyName = bootstrap?.company.name || 'PWA App';
+  const companyName = bootstrap?.company?.name || 'PWA App';
   const placements = bootstrap?.modulePlacements || [];
   const flags = bootstrap?.featureFlags || {};
 
@@ -82,6 +85,14 @@ export function Sidebar() {
     .filter((p) => p.enabled && hasPerm(p.perm) && (!p.flag || flags[p.flag]))
     .sort((a, b) => a.position - b.position);
 
+  const moduleIcon = (p: { key: string; icon: string | null }) => {
+    const url = p.icon && p.icon.startsWith('http') ? p.icon : null;
+    if (url) {
+      return <img className="side-module-logo" src={url} alt="" />;
+    }
+    return p.icon && ICONS[p.icon] ? ICONS[p.icon] : ICONS[p.key] || genericIcon();
+  };
+
   const initials = bootstrap?.user.name
     ? bootstrap.user.name.split(' ').map((n) => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
     : 'U';
@@ -89,7 +100,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="side-brand" onClick={() => navigate('/home')}>
-        {bootstrap?.company.theme.logoUrl ? (
+        {bootstrap?.company?.theme.logoUrl ? (
           <img src={bootstrap.company.theme.logoUrl} alt="logo" className="side-logo" />
         ) : (
           <span className="side-letter">{companyName.charAt(0)}</span>
@@ -105,6 +116,11 @@ export function Sidebar() {
         <NavLink to="/profile" end className={({ isActive }) => (isActive ? 'side-link on' : 'side-link')}>
           {NAV_ICONS.profile} <span>Perfil</span>
         </NavLink>
+        {isSuperAccount && bootstrap?.scope === 'company' && (
+          <NavLink to="/global-config" end className={({ isActive }) => (isActive ? 'side-link on' : 'side-link')}>
+            {NAV_ICONS.globe} <span>Panel global</span>
+          </NavLink>
+        )}
       </nav>
 
       {modules.length > 0 && (
@@ -113,7 +129,7 @@ export function Sidebar() {
           <nav className="side-nav">
             {modules.map((p) => (
               <NavLink key={p.id} to={p.path} className={({ isActive }) => (isActive ? 'side-link on' : 'side-link')}>
-                {ICONS[p.key] || genericIcon()} <span>{p.label}</span>
+                {moduleIcon(p)} <span>{p.label}</span>
               </NavLink>
             ))}
           </nav>

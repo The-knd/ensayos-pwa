@@ -4,7 +4,7 @@
  * dependa directamente de un servicio de un módulo de negocio (RbacService).
  */
 export interface PermissionProviderPort {
-  getPermissions(userId: string, companyId: string): Promise<string[]>;
+  getPermissions(userId: string, companyId: string | null): Promise<string[]>;
 }
 
 export const PERMISSION_PROVIDER = Symbol('PERMISSION_PROVIDER');

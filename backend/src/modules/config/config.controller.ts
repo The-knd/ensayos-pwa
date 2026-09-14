@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -20,7 +21,9 @@ import { Permissions } from '../../commons/decorators/permissions.decorator';
 import { CurrentTenant } from '../../commons/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { ConfigService } from './config.service';
+import { CreateCompanyDto } from './dto/company.dto';
 import { RbacService } from '../rbac/rbac.service';
+import { SUPER_ADMIN_PROFILE_ID } from '../../commons/constants';
 
 const LOGOS_DIR = join(process.cwd(), 'uploads', 'logos');
 
@@ -64,6 +67,12 @@ export class ConfigController {
     private service: ConfigService,
     private rbacService: RbacService,
   ) {}
+
+  private ensureSuperAdmin(user: { profileId: string }): void {
+    if (user.profileId !== SUPER_ADMIN_PROFILE_ID) {
+      throw new ForbiddenException('Esta operación solo la puede realizar el superadmin');
+    }
+  }
 
   @Get('context')
   async getContext(@CurrentUser() user, @CurrentTenant() companyId: string) {
@@ -111,17 +120,30 @@ export class ConfigController {
     return this.service.update(companyId, { logoUrl });
   }
 
-  // --- Gestión de todas las empresas (solo config.update = super admin) ---
+  // --- Gestión global de empresas (solo superadmin) ---
 
   @Get('companies')
   @Permissions('config.read')
-  findAllCompanies() {
+  findAllCompanies(@CurrentUser() user) {
+    this.ensureSuperAdmin(user);
     return this.service.findAllCompanies();
+  }
+
+  @Post('companies')
+  @Permissions('config.update')
+  async createCompany(@CurrentUser() user, @Body() dto: CreateCompanyDto) {
+    this.ensureSuperAdmin(user);
+    const company = await this.service.create(dto);
+    // Los perfiles de sistema de la nueva empresa (admin/vendedor) se crean
+    // clonando las plantillas globales; luego cada empresa configura los suyos.
+    await this.rbacService.ensureCompanyProfiles(company.id);
+    return company;
   }
 
   @Patch('companies/:id')
   @Permissions('config.update')
-  updateCompany(@Param('id') id: string, @Body() dto: any) {
+  updateCompany(@CurrentUser() user, @Param('id') id: string, @Body() dto: any) {
+    this.ensureSuperAdmin(user);
     return this.service.update(id, dto);
   }
 
@@ -139,9 +161,11 @@ export class ConfigController {
     }),
   )
   uploadCompanyLogo(
+    @CurrentUser() user,
     @UploadedFile() file: Express.Multer.File,
     @Param('id') id: string,
   ) {
+    this.ensureSuperAdmin(user);
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const logoUrl = publicLogoUrl(id, safeExt(file));
     removePreviousLogos(id, `logo-${safeId(id)}${safeExt(file)}`);

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, IsUUID, Length, MinLength } from 'class-validator';
+import { IsEmail, IsString, IsUUID, IsOptional, Length, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsEmail()
@@ -14,4 +14,9 @@ export class CreateUserDto {
 
   @IsUUID()
   profileId: string;
+
+  /** Empresa de asignación principal. Solo tiene efecto en creación hecha por el superadmin; el admin siemppre crea en su propia empresa. */
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
 }

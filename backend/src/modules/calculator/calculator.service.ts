@@ -7,4 +7,9 @@ export class CalculatorService {
     const result = Number(dto.a) + Number(dto.b);
     return { result, expression: `${dto.a} + ${dto.b} = ${result}` };
   }
+
+  subtract(dto: SumDto): { result: number; expression: string } {
+    const result = Number(dto.a) - Number(dto.b);
+    return { result, expression: `${dto.a} - ${dto.b} = ${result}` };
+  }
 }

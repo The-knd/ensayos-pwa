@@ -111,7 +111,7 @@ export function CreditStudyPage() {
     }
   };
 
-  const logo = bootstrap?.company.theme.logoUrl || undefined;
+  const logo = bootstrap?.company?.theme.logoUrl || undefined;
   const clientReady = !!client && consentData;
 
   return (
