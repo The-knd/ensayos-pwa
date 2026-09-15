@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository, IsNull } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -7,6 +7,7 @@ import { Permission } from './entities/permission.entity';
 import { ProfilePermission } from './entities/profile-permission.entity';
 import { SUPER_ADMIN_PROFILE_ID, ADMIN_PROFILE_ID, VENDEDOR_PROFILE_ID } from '../../commons/constants';
 import Redis from 'ioredis';
+import { StructuredLogger } from '../../commons/logger/structured-logger.service';
 
 @Injectable()
 export class RbacService {
@@ -16,6 +17,7 @@ export class RbacService {
     @InjectRepository(Permission) private permissionRepo: Repository<Permission>,
     @InjectRepository(ProfilePermission) private profilePermRepo: Repository<ProfilePermission>,
     @Inject(Redis) private redis: Redis,
+    private logger: StructuredLogger,
   ) {}
 
   private cacheKey(userId: string): string {
@@ -85,7 +87,7 @@ export class RbacService {
     if (user && user.profileId === SUPER_ADMIN_PROFILE_ID) {
       permissions = await this.permissionRepo.find();
     } else {
-      permissions = user ? await this.getProfilePermissions(user.profileId) : [];
+      permissions = user ? await this.getProfilePermissions(user.profileId, companyId) : [];
     }
     const codes = permissions.map((p) => p.code);
 
@@ -174,21 +176,85 @@ export class RbacService {
 
   /* ---------- Profile Permissions ---------- */
 
-  async getProfilePermissions(profileId: string) {
+  /**
+   * El perfil objetivo debe pertenecer a la empresa del caller (o ser el perfil
+   * global super_admin). Evita que un admin de una empresa toque perfiles de
+   * otra empresa ni las plantillas de sistema ajenas (OWASP A01:2021).
+   */
+  private async assertAccessibleProfile(
+    profileId: string,
+    companyId: string | null,
+    actor?: { profileId: string },
+  ): Promise<Profile> {
+    const profile = await this.profileRepo.findOne({ where: { id: profileId } });
+    if (!profile) throw new NotFoundException('Perfil no encontrado');
+
+    const isGlobalSuperAdmin = profile.companyId === null && profile.id === SUPER_ADMIN_PROFILE_ID;
+    const isCompanyProfile = companyId !== null && profile.companyId === companyId;
+
+    if (!isGlobalSuperAdmin && !isCompanyProfile) {
+      throw new NotFoundException('Perfil no encontrado');
+    }
+    if (isGlobalSuperAdmin && actor && actor.profileId !== SUPER_ADMIN_PROFILE_ID) {
+      throw new ForbiddenException('Solo el superadmin puede modificar el perfil super_admin');
+    }
+    return profile;
+  }
+
+  private async invalidateProfileCache(profileId: string): Promise<void> {
+    const users = await this.userRepo.find({ where: { profileId }, select: { id: true } });
+    await Promise.all(users.map((u) => this.redis.del(this.cacheKey(u.id))));
+  }
+
+  async getProfilePermissions(profileId: string, companyId: string | null) {
+    await this.assertAccessibleProfile(profileId, companyId);
     const rows = await this.profilePermRepo.find({ where: { profileId }, relations: ['permission'] });
     return rows.map((r) => r.permission);
   }
 
-  async assignPermission(profileId: string, permissionId: string) {
+  async assignPermission(
+    profileId: string,
+    permissionId: string,
+    companyId: string | null,
+    actor?: { profileId: string },
+  ) {
+    await this.assertAccessibleProfile(profileId, companyId, actor);
+    const permission = await this.permissionRepo.findOne({ where: { id: permissionId } });
+    if (!permission) throw new NotFoundException('Permiso no encontrado');
+
     const exists = await this.profilePermRepo.findOne({ where: { profileId, permissionId } });
     if (exists) return exists;
-    return this.profilePermRepo.save(this.profilePermRepo.create({ profileId, permissionId }));
+
+    const saved = await this.profilePermRepo.save(
+      this.profilePermRepo.create({ profileId, permissionId }),
+    );
+    await this.invalidateProfileCache(profileId);
+
+    this.logger.audit('rbac.permission.granted', {
+      actor: actor?.profileId,
+      meta: { profileId, permissionId: permission.code },
+    });
+    return saved;
   }
 
-  async removePermission(profileId: string, permissionId: string) {
+  async removePermission(
+    profileId: string,
+    permissionId: string,
+    companyId: string | null,
+    actor?: { profileId: string },
+  ) {
+    await this.assertAccessibleProfile(profileId, companyId, actor);
+
     const row = await this.profilePermRepo.findOne({ where: { profileId, permissionId } });
     if (!row) throw new NotFoundException('Permiso no asignado');
     await this.profilePermRepo.remove(row);
+    await this.invalidateProfileCache(profileId);
+
+    const permission = await this.permissionRepo.findOne({ where: { id: permissionId } });
+    this.logger.audit('rbac.permission.revoked', {
+      actor: actor?.profileId,
+      meta: { profileId, permissionId: permission?.code ?? permissionId },
+    });
     return { success: true };
   }
 

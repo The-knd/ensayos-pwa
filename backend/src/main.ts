@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { webcrypto } from 'crypto';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './commons/filters/http-exception.filter';
+import { StructuredLogger } from './commons/logger/structured-logger.service';
 
 if (!(globalThis as any).crypto) {
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
@@ -13,11 +14,19 @@ if (!(globalThis as any).crypto) {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useLogger(new StructuredLogger());
   app.set('trust proxy', 1);
   app.use(cookieParser());
+
+  // Límite explícito del body JSON: se rechazan payloads desproporcionados
+  // antes de que lleguen a validación (OWASP A01/A05, ISO 27001 A.12.6.1).
+  app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
+
   app.use(
     helmet({
-      // La CSP del SPA la gestiona nginx; el API solo sirve JSON.
+      // La CSP del SPA la gestiona nginx; el API solo sirve JSON. Los archivos
+      // subidos se sirven con headers propios (uploads.controller.ts).
       contentSecurityPolicy: false,
     }),
   );

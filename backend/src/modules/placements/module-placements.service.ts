@@ -5,10 +5,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { Module } from './entities/module.entity';
 import { ModuleAssignment } from './entities/module-assignment.entity';
 import { ModuleVariant } from './entities/module-variant.entity';
+import { Company } from '../config/entities/company.entity';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { UpdateAssignmentDto, PublishModuleDto } from './dto/update-assignment.dto';
@@ -231,6 +232,23 @@ export class ModulePlacementsService {
             enabled: true,
           }),
         );
+      } else {
+        // Módulo global (sin empresa dueña): se distribuye automáticamente a
+        // todas las empresas activas como FAB.
+        const companies = await manager.find(Company, { select: ['id'], where: { isActive: true } });
+        if (companies.length > 0) {
+          await manager.upsert(
+            ModuleAssignment,
+            companies.map((c) => ({
+              moduleId: saved.id,
+              companyId: c.id,
+              placement: 'fab',
+              position: 999,
+              enabled: true,
+            })),
+            ['moduleId', 'companyId'],
+          );
+        }
       }
 
       await this.rbacService.registerModulePermissions(
@@ -520,6 +538,22 @@ export class ModulePlacementsService {
     if (!variant) throw new NotFoundException('Variante no encontrada');
     await this.variantRepo.remove(variant);
     return { success: true };
+  }
+
+  /** Asigna todos los módulos globales habilitados a una empresa (usado al crear empresa). */
+  async assignGlobalModules(companyId: string): Promise<void> {
+    const globals = await this.moduleRepo.find({ where: { companyId: IsNull(), enabled: true } });
+    if (globals.length === 0) return;
+    await this.assignmentRepo.upsert(
+      globals.map((m) => ({
+        moduleId: m.id,
+        companyId,
+        placement: 'fab',
+        position: 999,
+        enabled: true,
+      })),
+      ['moduleId', 'companyId'],
+    );
   }
 
   /* ---------- helpers ---------- */

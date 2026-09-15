@@ -34,6 +34,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         signOptions: {
           expiresIn: config.get('JWT_ACCESS_EXPIRES_IN'),
           issuer: 'pwa-frontend-key',
+          audience: 'pwa-frontend',
         },
       }),
     }),

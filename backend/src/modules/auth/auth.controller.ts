@@ -1,17 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -25,6 +12,7 @@ import { PasskeyAuthStrategy } from './strategies/passkey-auth.strategy';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import Redis from 'ioredis';
+import { StructuredLogger } from '../../commons/logger/structured-logger.service';
 
 const CHALLENGE_TTL = 300;
 
@@ -36,6 +24,7 @@ export class AuthController {
     @InjectRepository(Device) private deviceRepo: Repository<Device>,
     @Inject(Redis) private redis: Redis,
     private passkeyStrategy: PasskeyAuthStrategy,
+    private logger: StructuredLogger,
   ) {}
 
   private async registerChallenge(userId: string, challenge: string): Promise<void> {
@@ -73,14 +62,33 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.localStrategy.authenticate(dto);
-    await this.authService.issueTokensRes(result.userId, result.companyId, result.permissionsVersion, res);
-    return { success: true };
+    try {
+      const result = await this.localStrategy.authenticate(dto);
+      await this.authService.issueTokensRes(result.userId, result.companyId, result.permissionsVersion, res);
+      this.logger.audit('auth.login.success', {
+        actor: result.userId,
+        companyId: result.companyId,
+        meta: { email: dto.email },
+      });
+      return { success: true };
+    } catch (e) {
+      this.logger.audit('auth.login.failed', {
+        meta: { email: dto.email, reason: (e as any)?.message },
+      });
+      if (e instanceof UnauthorizedException) throw new UnauthorizedException('Credenciales inválidas');
+      throw e;
+    }
   }
 
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Post('refresh')
-  refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return this.authService.refresh(req, res);
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    try {
+      return await this.authService.refresh(req, res);
+    } catch (e) {
+      this.logger.audit('auth.refresh.failed', { meta: { reason: (e as any)?.message } });
+      throw e;
+    }
   }
 
   @Post('logout')
@@ -131,23 +139,28 @@ export class AuthController {
     return { verified: true };
   }
 
-  // --- Passkeys: inicio de sesión (público) ---
+  // --- Passkeys: chequeo (público, throttled para limitar user enumeration) ---
 
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('passkeys/check')
   checkPasskeys(@Body() body: { email: string }) {
     return this.authService.checkPasskeys(body);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('passkeys/login/options')
   async loginOptions(@Body() body: { email: string }) {
     if (!body?.email) {
       throw new BadRequestException('Email es obligatorio');
     }
+    // Ojo: la challenge queda keyed solo por email (no es viable incluir el
+    // companyId por diseño del flujo público). Se mitiga con rate-limit por IP.
     const options = await this.passkeyStrategy.getAuthenticationOptions(body.email);
     await this.saveLoginChallenge(`${body.email}`, options.challenge);
     return options;
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('passkeys/login/verify')
   async loginVerify(
     @Body() body: { email: string; response: any },

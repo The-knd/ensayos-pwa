@@ -9,3 +9,5 @@ coverage
 *.log
 uploads
 npm-debug.log*
+# Kong config generada en runtime (contiene secrets reales)
+kong/kong.yml

@@ -6,8 +6,8 @@ export class RefreshToken extends BaseEntity {
   @Column({ name: 'user_id' })
   userId: string;
 
-  @Column({ unique: true })
-  token: string;
+  @Column({ name: 'token_hash', unique: true })
+  tokenHash: string;
 
   @Column({ name: 'expires_at' })
   expiresAt: Date;

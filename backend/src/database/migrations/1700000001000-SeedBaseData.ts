@@ -1,5 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { demoPassword } from '../seed-helpers';
 
 export class SeedBaseData1700000001000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -50,9 +51,9 @@ export class SeedBaseData1700000001000 implements MigrationInterface {
       WHERE resource = 'clients' OR code IN ('credits.read', 'credits.study');
     `);
 
-    // 5. Usuarios de prueba (password conocida: Password123!) — nunca en producción.
+    // 5. Usuarios de prueba — nunca en producción (SEED_DEMO_DATA=false).
     if (process.env.SEED_DEMO_DATA !== 'false') {
-      const passwordHash = await bcrypt.hash('Password123!', 10);
+      const passwordHash = await bcrypt.hash(demoPassword(), 12);
       await queryRunner.query(
         `INSERT INTO users (id, company_id, profile_id, email, password_hash, status, full_name)
          VALUES

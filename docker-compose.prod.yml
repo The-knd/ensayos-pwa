@@ -11,6 +11,16 @@ services:
     # por la red interna de Docker.
     volumes:
       - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -26,6 +36,16 @@ services:
     command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
     volumes:
       - redisdata:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
@@ -42,10 +62,23 @@ services:
     env_file:
       - ./backend/.env.prod
     # Migraciones automáticas en cada deploy, antes de levantar el servidor.
+    # Se ejecutan con DB_MIGRATE_AS_OWNER=true para conectar como DB_USER
+    # (owner, puede hacer DDL) aunque el runtime use DB_APP_USER. Las variables
+    # DB_APP_* siguen visibles para que RlsHardening pueda crear el rol.
     command:
       - sh
       - -c
-      - npx typeorm migration:run -d dist/database/data-source.js && node dist/main
+      - DB_MIGRATE_AS_OWNER=true npx typeorm migration:run -d dist/database/data-source.js && node dist/main
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,11 +104,28 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Define JWT_ACCESS_SECRET (openssl rand -base64 48)}
       KONG_CORS_ORIGINS: ${KONG_CORS_ORIGINS:?Define KONG_CORS_ORIGINS, ej. ["https://tu-dominio.com"]}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD}
+      # El reverse proxy del host es el peer inmediato (loopback): confiar su
+      # X-Forwarded-For para que el rate-limit use la IP real del cliente y no
+      # 127.0.0.1 (que compartiría un único contador para todos).
+      KONG_TRUSTED_IPS: "127.0.0.1"
+      KONG_REAL_IP_HEADER: "X-Forwarded-For"
     volumes:
       - ./backend/kong:/kong
     entrypoint: ["/bin/sh", "/kong/start.sh"]
-    # Sin puertos publicados al host: nginx lo alcanza por la red interna.
-    # El admin API (8001) queda solo dentro del contenedor.
+    # Solo publicado a loopback: exclusivamente el reverse proxy del host lo
+    # alcanza. El admin API (8001) queda interno al contenedor.
+    ports:
+      - "127.0.0.1:8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 5s
@@ -95,13 +145,21 @@ services:
       target: production
     container_name: pwa-frontend
     restart: unless-stopped
+    # Solo loopback: el reverse proxy del host sirve TLS y rutea al contenedor.
+    # Este nginx internamente solo sirve el build estático (dist/); no conoce
+    # Kong.
     ports:
-      - "80:80"
-      # - "443:443"   # habilitar cuando haya TLS (certbot en el host o
-      #                 reverse proxy externo del proveedor)
-    depends_on:
-      kong:
-        condition: service_healthy
+      - "127.0.0.1:8080:80"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:

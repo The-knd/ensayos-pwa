@@ -72,9 +72,14 @@ Eliminar: Perfil → "Eliminar".
 
 Comprobación técnica:
 ```bash
+# CSRF double-submit: al hacer login el backend emite la cookie csrf_token;
+# toda mutación (POST/PUT/PATCH/DELETE) debe reenviarla como X-CSRF-Token.
+# El SPA lo hace automáticamente (httpClient.ts); con curl se extrae del jar:
+CSRF=$(awk '/csrf_token/{print $NF}' /tmp/cj)
 curl -s -c /tmp/cj -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"superadmin@empresa1.com","password":"Password123!","companyId":"11111111-1111-1111-1111-111111111111"}' -o /dev/null -w '%{http_code}\n'        # 201
-curl -s -b /tmp/cj -X POST localhost:3000/api/auth/passkeys/register/options -H 'Content-Type: application/json' -d '{}' -o /dev/null -w '%{http_code}\n'  # 201
+CSRF=$(awk '/csrf_token/{print $NF}' /tmp/cj)
+curl -s -b /tmp/cj -X POST localhost:3000/api/auth/passkeys/register/options -H 'Content-Type: application/json' -H "X-CSRF-Token: $CSRF" -d '{}' -o /dev/null -w '%{http_code}\n'  # 201
 curl -s -X POST localhost:3000/api/auth/passkeys/login/options -H 'Content-Type: application/json' \
   -d '{"email":"nobody@x.co","companyId":"11111111-1111-1111-1111-111111111111"}' -o /dev/null -w '%{http_code}\n'  # 201 (allowCredentials:[])
 curl -s -b /tmp/cj localhost:3000/api/auth/passkeys | head -c 200   # lista de dispositivos
@@ -85,7 +90,7 @@ Passkey inválida devuelve 401 (no 500).
 
 Como `superadmin@empresa1.com`:
 1. Configuración → "Mi empresa": editar nombre y color; "Elegir imagen" sube el **archivo**
-   (PNG/JPG/SVG/WEBP).
+   (PNG/JPG/WEBP — SVG ya NO se acepta para evitar XSS almacenado).
 2. Sección "Todas las empresas (super admin)": cada empresa activa tiene su tarjeta con
    preview del logo, nombre, color y botón "Subir logo".
 3. Los archivos se guardan en `backend/uploads/logos/` con nombre
@@ -94,7 +99,8 @@ Como `superadmin@empresa1.com`:
 
 Comprobación técnica:
 ```bash
-curl -s -b /tmp/cj -X POST localhost:3000/api/config/logo -F 'file=@/tmp/logo.png' | head -c 200
+CSRF=$(awk '/csrf_token/{print $NF}' /tmp/cj)   # tras hacer login con el mismo jar
+curl -s -b /tmp/cj -X POST localhost:3000/api/config/logo -H "X-CSRF-Token: $CSRF" -F 'file=@/tmp/logo.png' | head -c 200
 curl -s localhost:3000/api/auth/companies | grep -o '"logoUrl":"[^"]*"'
 ls backend/uploads/logos/
 ```
@@ -115,8 +121,10 @@ ls backend/uploads/logos/
 ## 8. Pendientes y plan
 
 Pendientes actuales (fuera de este alcance):
-- **Kong/gateway**: `frontend/src/shared/api/httpClient.ts` usa `http://localhost:3000/api`
-  directo; cuando exista gateway devolver a `http://localhost:8000/api`. URL pública
+- **Kong/gateway (desarrollo local)**: en producción el tráfico ya pasa por Kong
+  (el reverse proxy del host rutea `/api/*` a `127.0.0.1:8000`). El pendiente
+  es que `frontend/src/shared/api/httpClient.ts` apunte a Kong en dev local
+  (http://localhost:8000) en vez de http://localhost:3000/api. URL pública
   `GET /api/auth/companies` sirve para el selector de login.
 - **Taxes / retenciones**: el flujo de clientes/creditos aún no las modela (fields ya
   hay `funds_origin` nullable; falta UI + cálculo).

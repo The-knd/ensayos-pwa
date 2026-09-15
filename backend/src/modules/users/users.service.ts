@@ -32,7 +32,7 @@ export class UsersService {
   }
 
   async create(companyId: string | null, data: { email: string; password: string; fullName: string; profileId: string }) {
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await bcrypt.hash(data.password, 12);
     return this.repo.save(
       this.repo.create({
         email: data.email,

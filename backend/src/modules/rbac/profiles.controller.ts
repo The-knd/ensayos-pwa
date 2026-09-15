@@ -67,19 +67,39 @@ export class ProfilesController {
 
   @Get(':id/permissions')
   @Permissions('profiles.read')
-  getPermissions(@Param('id') id: string) {
-    return this.rbacService.getProfilePermissions(id);
+  getPermissions(@Param('id') id: string, @CurrentTenant() companyId: string) {
+    return this.rbacService.getProfilePermissions(id, companyId);
   }
 
   @Post(':id/permissions')
   @Permissions('profiles.update')
-  assignPermission(@Param('id') id: string, @Body() dto: AssignPermissionDto) {
-    return this.rbacService.assignPermission(id, dto.permissionId);
+  assignPermission(
+    @Param('id') id: string,
+    @Body() dto: AssignPermissionDto,
+    @CurrentTenant() companyId: string,
+    @CurrentUser() user,
+  ) {
+    return this.rbacService.assignPermission(
+      id,
+      dto.permissionId,
+      companyId,
+      { profileId: user.profileId },
+    );
   }
 
   @Delete(':id/permissions/:permissionId')
   @Permissions('profiles.update')
-  removePermission(@Param('id') id: string, @Param('permissionId') permissionId: string) {
-    return this.rbacService.removePermission(id, permissionId);
+  removePermission(
+    @Param('id') id: string,
+    @Param('permissionId') permissionId: string,
+    @CurrentTenant() companyId: string,
+    @CurrentUser() user,
+  ) {
+    return this.rbacService.removePermission(
+      id,
+      permissionId,
+      companyId,
+      { profileId: user.profileId },
+    );
   }
 }

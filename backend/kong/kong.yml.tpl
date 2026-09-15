@@ -7,16 +7,12 @@ services:
   - name: backend-service
     url: http://backend:3000
     routes:
-      # Endpoints de auth que deben ser accesibles SIN token (login, listar
-      # empresas, refresh de cookie, logout, chequeo/login de passkeys).
-      - name: auth-public-route
+      # Endpoints públicos de auth, cada uno con su PROPIO bucket de rate-limit
+      # (M-1): así un atacante que agota el límite de login/passkeys NO priva
+      # del refresh a los usuarios legítimos (evita el DoS de sesión).
+      - name: auth-login-route
         paths:
           - /api/auth/login
-          - /api/auth/companies
-          - /api/auth/refresh
-          - /api/auth/logout
-          - /api/auth/passkeys/check
-          - /api/auth/passkeys/login
         strip_path: false
         plugins:
           - name: cors
@@ -30,6 +26,101 @@ services:
               policy: redis
               # Falla cerrado: si Redis no responde, se bloquea el login en vez
               # de dejarlo sin límite.
+              fault_tolerant: false
+              redis_host: redis
+              redis_port: 6379
+              redis_password: __REDIS_PASSWORD__
+
+      - name: auth-companies-route
+        paths:
+          - /api/auth/companies
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: __CORS_ORIGINS__
+              credentials: true
+              methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          - name: rate-limiting
+            config:
+              minute: 60
+              policy: redis
+              fault_tolerant: false
+              redis_host: redis
+              redis_port: 6379
+              redis_password: __REDIS_PASSWORD__
+
+      - name: auth-refresh-route
+        paths:
+          - /api/auth/refresh
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: __CORS_ORIGINS__
+              credentials: true
+              methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          - name: rate-limiting
+            config:
+              minute: 60
+              policy: redis
+              fault_tolerant: false
+              redis_host: redis
+              redis_port: 6379
+              redis_password: __REDIS_PASSWORD__
+
+      - name: auth-logout-route
+        paths:
+          - /api/auth/logout
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: __CORS_ORIGINS__
+              credentials: true
+              methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          - name: rate-limiting
+            config:
+              minute: 60
+              policy: redis
+              fault_tolerant: false
+              redis_host: redis
+              redis_port: 6379
+              redis_password: __REDIS_PASSWORD__
+
+      - name: auth-passkeys-check-route
+        paths:
+          - /api/auth/passkeys/check
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: __CORS_ORIGINS__
+              credentials: true
+              methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          - name: rate-limiting
+            config:
+              minute: 20
+              policy: redis
+              fault_tolerant: false
+              redis_host: redis
+              redis_port: 6379
+              redis_password: __REDIS_PASSWORD__
+
+      - name: auth-passkeys-login-route
+        paths:
+          - /api/auth/passkeys/login
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: __CORS_ORIGINS__
+              credentials: true
+              methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          - name: rate-limiting
+            config:
+              minute: 10
+              policy: redis
               fault_tolerant: false
               redis_host: redis
               redis_port: 6379
@@ -94,6 +185,12 @@ services:
 
 # El JWT de Kong es defensa en profundidad: valida firma + exp en el gateway
 # antes de reenviar al backend, que mantiene sus propios JwtAuthGuard/RBAC.
+#
+# Production: el rate-limit depende de KONG_TRUSTED_IPS y KONG_REAL_IP_HEADER
+# (variables de entorno del contenedor kong en docker-compose.prod.yml) para
+# extraer la IP real del X-Forwarded-For que envía el reverse proxy del host.
+# Sin esas variables, todos los clientes verían 127.0.0.1 como IP y
+# compartirían un único contador de rate-limiting.
 consumers:
   - username: pwa-frontend
     jwt_secrets:

@@ -15,10 +15,12 @@ import { RedisModule } from './modules/redis/redis.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { ModulePlacementsModule } from './modules/placements/module-placements.module';
 import { CalculatorModule } from './modules/calculator/calculator.module';
-import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.middleware';
 import { CsrfMiddleware } from './commons/middlewares/csrf.middleware';
 import { envValidationSchema } from './commons/config/env.validation';
 import { TenantContextInterceptor } from './commons/interceptors/tenant-context.interceptor';
+import { LoggerModule } from './commons/logger/logger.module';
+import { StructuredLogger } from './commons/logger/structured-logger.service';
+import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.middleware';
 
 @Module({
   imports: [
@@ -33,13 +35,17 @@ import { TenantContextInterceptor } from './commons/interceptors/tenant-context.
         type: 'postgres',
         host: config.get('DB_HOST'),
         port: config.get('DB_PORT'),
-        username: config.get('DB_USER'),
-        password: config.get('DB_PASSWORD'),
+        // Si se define DB_APP_USER/DB_APP_PASSWORD, el runtime se conecta con
+        // un rol de aplicación NO owner (RLS realmente activo). Las migraciones
+        // se ejecutan como DB_USER (owner) — ver docker-compose.prod.yml.
+        username: config.get('DB_APP_USER') || config.get('DB_USER'),
+        password: config.get('DB_APP_PASSWORD') || config.get('DB_PASSWORD'),
         database: config.get('DB_NAME'),
         autoLoadEntities: true,
         synchronize: false,
       }),
     }),
+    LoggerModule,
     EventEmitterModule.forRoot(),
     ThrottlerModule.forRoot([
       {
@@ -70,6 +76,10 @@ import { TenantContextInterceptor } from './commons/interceptors/tenant-context.
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    // Se declaran aquí para que sus dependencias (StructuredLogger) se
+    // inyecten correctamente en los middlewares aplicados en configure().
+    StructuredLogger,
+    CorrelationIdMiddleware,
   ],
 })
 export class AppModule implements NestModule {

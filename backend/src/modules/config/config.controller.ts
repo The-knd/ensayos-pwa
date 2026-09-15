@@ -14,7 +14,17 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+} from 'fs';
+import { randomUUID } from 'crypto';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
 import { Permissions } from '../../commons/decorators/permissions.decorator';
@@ -23,9 +33,18 @@ import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { ConfigService } from './config.service';
 import { CreateCompanyDto } from './dto/company.dto';
 import { RbacService } from '../rbac/rbac.service';
+import { ModulePlacementsService } from '../placements/module-placements.service';
 import { SUPER_ADMIN_PROFILE_ID } from '../../commons/constants';
 
 const LOGOS_DIR = join(process.cwd(), 'uploads', 'logos');
+const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+
+// Únicamente imágenes rasterizadas. SVG quedaría FUERA a propósito: un SVG
+// servido same-origin puede contener <script> (stored XSS, OWASP A03/A05).
+const ALLOWED_LOGO_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
 
 function ensureLogosDir(): string {
   if (!existsSync(LOGOS_DIR)) mkdirSync(LOGOS_DIR, { recursive: true });
@@ -36,10 +55,56 @@ function safeId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'unknown';
 }
 
-function safeExt(file: Express.Multer.File): string {
+/**
+ * Extensión del archivo. Solo se confía en la extensión para un primer filtro
+ * en fileFilter; la validación de contenido (magic bytes) ocurre después de
+ * escribirlo en disco en detectStoredImageType().
+ */
+function allowedDeclaredExt(file: { originalname: string }): string | null {
   const ext = extname(file.originalname).toLowerCase();
-  const allowed = ['.png', '.jpg', '.jpeg', '.svg', '.webp'];
-  return allowed.includes(ext) ? ext : '.png';
+  return ALLOWED_LOGO_EXT.has(ext) ? ext : null;
+}
+
+/** Detecta el tipo real leyendo los primeros bytes del archivo ya escrito. */
+function detectStoredImageType(filePath: string): string | null {
+  const fd = openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(12);
+    const read = readSync(fd, buf, 0, 12, 0);
+    if (read < 3) return null;
+    if (PNG_SIGNATURE.equals(buf.subarray(0, 4))) return '.png';
+    if (JPEG_SIGNATURE.equals(buf.subarray(0, 3))) return '.jpg';
+    if (
+      read >= 12 &&
+      buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buf.subarray(8, 12).toString('ascii') === 'WEBP'
+    ) {
+      return '.webp';
+    }
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Escribe en disco y valida; devuelve el nombre definitivo del logo. */
+function finalizeLogo(file: { path: string; filename: string }, companyId: string): string {
+  const detected = detectStoredImageType(file.path);
+  if (!detected) {
+    try {
+      unlinkSync(file.path);
+    } catch {
+      // el resto de la limpieza se hace en removePreviousLogos
+    }
+    throw new BadRequestException(
+      'El archivo no es una imagen válida. Se permiten PNG, JPEG o WebP',
+    );
+  }
+  const finalName = `logo-${safeId(companyId)}${detected}`;
+  if (file.filename !== finalName) {
+    renameSync(file.path, join(LOGOS_DIR, finalName));
+  }
+  return finalName;
 }
 
 function publicLogoUrl(companyId: string, ext: string): string {
@@ -60,12 +125,39 @@ function removePreviousLogos(companyId: string, keep: string): void {
   }
 }
 
+/** Configuración Multer compartida para los dos endpoints de logo. */
+function logoUploadInterceptor() {
+  return FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => cb(null, ensureLogosDir()),
+      filename: (req, file, cb) => {
+        // Nombre temporal: se valida el contenido y se renombra en el controller.
+        cb(null, `tmp-${randomUUID()}.img`);
+      },
+    }),
+    limits: { fileSize: MAX_LOGO_BYTES },
+    fileFilter: (req, file, cb) => {
+      const declaredExt = allowedDeclaredExt(file);
+      if (!declaredExt) {
+        cb(new BadRequestException('Solo se permiten imágenes PNG, JPEG o WebP'), false);
+        return;
+      }
+      if (file.mimetype && !file.mimetype.startsWith('image/')) {
+        cb(new BadRequestException('El tipo MIME del archivo no es una imagen'), false);
+        return;
+      }
+      cb(null, true);
+    },
+  });
+}
+
 @Controller('config')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ConfigController {
   constructor(
     private service: ConfigService,
     private rbacService: RbacService,
+    private modulePlacementsService: ModulePlacementsService,
   ) {}
 
   private ensureSuperAdmin(user: { profileId: string }): void {
@@ -98,26 +190,15 @@ export class ConfigController {
 
   @Post('logo')
   @Permissions('config.update')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => cb(null, ensureLogosDir()),
-        filename: (req, file, cb) => {
-          const companyId = (req as any).user?.companyId || 'unknown';
-          cb(null, `logo-${safeId(companyId)}${safeExt(file)}`);
-        },
-      }),
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(logoUploadInterceptor())
   uploadLogo(
     @UploadedFile() file: Express.Multer.File,
     @CurrentTenant() companyId: string,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
-    const logoUrl = publicLogoUrl(companyId, safeExt(file));
-    removePreviousLogos(companyId, `logo-${safeId(companyId)}${safeExt(file)}`);
-    return this.service.update(companyId, { logoUrl });
+    const finalName = finalizeLogo(file, companyId);
+    removePreviousLogos(companyId, finalName);
+    return this.service.update(companyId, { logoUrl: publicLogoUrl(companyId, extname(finalName)) });
   }
 
   // --- Gestión global de empresas (solo superadmin) ---
@@ -137,6 +218,8 @@ export class ConfigController {
     // Los perfiles de sistema de la nueva empresa (admin/vendedor) se crean
     // clonando las plantillas globales; luego cada empresa configura los suyos.
     await this.rbacService.ensureCompanyProfiles(company.id);
+    // Los módulos globales se distribuyen automáticamente a la nueva empresa.
+    await this.modulePlacementsService.assignGlobalModules(company.id);
     return company;
   }
 
@@ -149,17 +232,7 @@ export class ConfigController {
 
   @Post('companies/:id/logo')
   @Permissions('config.update')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => cb(null, ensureLogosDir()),
-        filename: (req, file, cb) => {
-          cb(null, `logo-${safeId(req.params.id || 'unknown')}${safeExt(file)}`);
-        },
-      }),
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(logoUploadInterceptor())
   uploadCompanyLogo(
     @CurrentUser() user,
     @UploadedFile() file: Express.Multer.File,
@@ -167,8 +240,8 @@ export class ConfigController {
   ) {
     this.ensureSuperAdmin(user);
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
-    const logoUrl = publicLogoUrl(id, safeExt(file));
-    removePreviousLogos(id, `logo-${safeId(id)}${safeExt(file)}`);
-    return this.service.update(id, { logoUrl });
+    const finalName = finalizeLogo(file, id);
+    removePreviousLogos(id, finalName);
+    return this.service.update(id, { logoUrl: publicLogoUrl(id, extname(finalName)) });
   }
 }

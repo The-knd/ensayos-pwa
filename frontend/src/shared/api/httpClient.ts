@@ -10,6 +10,28 @@ export const httpClient = axios.create({
   },
 });
 
+/** Lee una cookie (sin httpOnly — csrf_token NO lo es a propósito). */
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(
+    new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+// Double-submit CSRF: toda mutación lleva X-CSRF-Token con el valor de la
+// cookie csrf_token (emitida al iniciar sesión).
+httpClient.interceptors.request.use((config) => {
+  const method = (config.method ?? 'get').toLowerCase();
+  if (!['get', 'head', 'options'].includes(method)) {
+    const csrf = getCookie('csrf_token');
+    if (csrf) {
+      config.headers = config.headers ?? {};
+      config.headers['X-CSRF-Token'] = csrf;
+    }
+  }
+  return config;
+});
+
 let isRefreshing = false;
 let queue: Array<() => void> = [];
 
