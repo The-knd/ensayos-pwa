@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Put, Delete, Body, Param, UseGuards,
+  Controller, Get, Post, Patch, Put, Delete, Body, Param, ParseUUIDPipe, UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
@@ -40,7 +40,7 @@ export class ModulePlacementsController {
   @Patch(':id')
   @Permissions('config.update')
   update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
     @Body() dto: UpdateModuleDto,
@@ -56,7 +56,7 @@ export class ModulePlacementsController {
   @Patch(':id/assignment')
   @Permissions('config.update')
   updateAssignment(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
     @Body() dto: UpdateAssignmentDto,
@@ -72,7 +72,7 @@ export class ModulePlacementsController {
   @Delete(':id')
   @Permissions('config.update')
   remove(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
   ) {
@@ -86,7 +86,7 @@ export class ModulePlacementsController {
   @Post(':id/publications')
   @Permissions('config.update')
   publish(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
     @Body() dto: PublishModuleDto,
@@ -102,8 +102,8 @@ export class ModulePlacementsController {
   @Delete(':id/publications/:companyId')
   @Permissions('config.update')
   unpublish(
-    @Param('id') id: string,
-    @Param('companyId') targetCompanyId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('companyId', new ParseUUIDPipe()) targetCompanyId: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
   ) {
@@ -120,7 +120,7 @@ export class ModulePlacementsController {
   @Get(':id/variants')
   @Permissions('config.read')
   variants(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
   ) {
@@ -130,8 +130,8 @@ export class ModulePlacementsController {
   @Put(':id/variants/:companyId')
   @Permissions('config.update')
   upsertVariant(
-    @Param('id') id: string,
-    @Param('companyId') targetCompanyId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('companyId', new ParseUUIDPipe()) targetCompanyId: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
     @Body() dto: UpsertModuleVariantDto,
@@ -148,8 +148,8 @@ export class ModulePlacementsController {
   @Delete(':id/variants/:companyId')
   @Permissions('config.update')
   removeVariant(
-    @Param('id') id: string,
-    @Param('companyId') targetCompanyId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('companyId', new ParseUUIDPipe()) targetCompanyId: string,
     @CurrentUser() user,
     @CurrentTenant() companyId: string | null,
   ) {

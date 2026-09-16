@@ -14,6 +14,9 @@ if (!(globalThis as any).crypto) {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Graceful shutdown: SIGTERM/SIGINT drenan peticiones en curso y cierran
+  // pool de DB y conexiones a Redis antes de salir.
+  app.enableShutdownHooks();
   app.useLogger(new StructuredLogger());
   app.set('trust proxy', 1);
   app.use(cookieParser());

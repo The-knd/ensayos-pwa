@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ForbiddenException, BadRequestException, ParseUUIDPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../commons/guards/permissions.guard';
 import { Permissions } from '../../commons/decorators/permissions.decorator';
@@ -61,7 +61,7 @@ export class UsersController {
   @Permissions('users.update')
   update(
     @CurrentUser() user,
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentTenant() companyId: string | null,
     @Body() dto: UpdateUserDto,
   ) {
@@ -74,13 +74,16 @@ export class UsersController {
 
   @Patch(':id/status')
   @Permissions('users.update')
-  toggleStatus(@Param('id') id: string, @CurrentTenant() companyId: string | null) {
+  toggleStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentTenant() companyId: string | null,
+  ) {
     return this.service.toggleStatus(id, companyId);
   }
 
   @Delete(':id')
   @Permissions('users.delete')
-  remove(@Param('id') id: string, @CurrentTenant() companyId: string | null) {
+  remove(@Param('id', new ParseUUIDPipe()) id: string, @CurrentTenant() companyId: string | null) {
     return this.service.remove(id, companyId);
   }
 }

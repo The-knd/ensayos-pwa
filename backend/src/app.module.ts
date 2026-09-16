@@ -15,6 +15,8 @@ import { RedisModule } from './modules/redis/redis.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { ModulePlacementsModule } from './modules/placements/module-placements.module';
 import { CalculatorModule } from './modules/calculator/calculator.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
+import { MetricsMiddleware } from './modules/metrics/metrics.middleware';
 import { CsrfMiddleware } from './commons/middlewares/csrf.middleware';
 import { envValidationSchema } from './commons/config/env.validation';
 import { TenantContextInterceptor } from './commons/interceptors/tenant-context.interceptor';
@@ -43,6 +45,17 @@ import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.mi
         database: config.get('DB_NAME'),
         autoLoadEntities: true,
         synchronize: false,
+        // Pool de conexiones acotado + timeouts de query/statement: el clásico
+        // "DB lenta → conexiones acumuladas → RAM↑ → contenedor muere" se corta
+        // con límites explícitos (ISO 27001 A.12.6.1).
+        poolSize: config.get<number>('DB_POOL_SIZE', 10),
+        extra: {
+          max: config.get<number>('DB_POOL_SIZE', 10),
+          connectionTimeoutMillis: config.get<number>('DB_CONNECTION_TIMEOUT_MS', 5000),
+          query_timeout: config.get<number>('DB_QUERY_TIMEOUT_MS', 10000),
+          statement_timeout: config.get<number>('DB_STATEMENT_TIMEOUT_MS', 12000),
+          idle_in_transaction_session_timeout: config.get<number>('DB_IDLE_TX_TIMEOUT_MS', 15000),
+        },
       }),
     }),
     LoggerModule,
@@ -66,6 +79,7 @@ import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.mi
     ModulePlacementsModule,
     CalculatorModule,
     HealthModule,
+    MetricsModule,
   ],
   providers: [
     {
@@ -80,11 +94,13 @@ import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.mi
     // inyecten correctamente en los middlewares aplicados en configure().
     StructuredLogger,
     CorrelationIdMiddleware,
+    MetricsMiddleware,
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(CorrelationIdMiddleware).forRoutes('*');
     consumer.apply(CsrfMiddleware).forRoutes('*');
+    consumer.apply(MetricsMiddleware).forRoutes('*');
   }
 }

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './modules/auth/AuthContext';
 import { LoginPage } from './modules/auth/LoginPage';
@@ -17,7 +18,6 @@ import { CreditSuccessPage } from './modules/credits/CreditSuccessPage';
 import { CreditPortfolioPage } from './modules/credits/CreditPortfolioPage';
 import { CreditDocumentsPage } from './modules/credits/CreditDocumentsPage';
 import { UsersListPage } from './modules/users/UsersListPage';
-import { TestViewPage } from './modules/test/TestViewPage';
 import { PortfolioPage } from './modules/portfolio/PortfolioPage';
 import { DiscountsPage } from './modules/discounts/DiscountsPage';
 import { SurveysPage } from './modules/surveys/SurveysPage';
@@ -30,6 +30,12 @@ import { BrainPage } from './modules/brain/BrainPage';
 import { ProfilesPage } from './modules/profiles/ProfilesPage';
 import { CalculatorPage } from './modules/calculator/CalculatorPage';
 import { SuperAdminGlobalConfigPage } from './modules/global/SuperAdminGlobalConfigPage';
+
+// Vista de pruebas (callbacks de créditos): solo se empaqueta en desarrollo
+// (import dinámico condicional + ruta con import.meta.env.DEV), nunca en prod.
+const TestViewPage = import.meta.env.DEV
+  ? lazy(() => import('./modules/test/TestViewPage').then((m) => ({ default: m.TestViewPage })))
+  : null;
 
 export function App() {
   return (
@@ -174,14 +180,18 @@ export function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/test"
-            element={
-              <ProtectedRoute>
-                <TestViewPage />
-              </ProtectedRoute>
-            }
-          />
+          {TestViewPage && (
+            <Route
+              path="/test"
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={null}>
+                    <TestViewPage />
+                  </Suspense>
+                </ProtectedRoute>
+              }
+            />
+          )}
           <Route path="/portfolio" element={<ProtectedRoute><PortfolioPage /></ProtectedRoute>} />
           <Route path="/discounts" element={<ProtectedRoute><DiscountsPage /></ProtectedRoute>} />
           <Route path="/surveys" element={<ProtectedRoute><SurveysPage /></ProtectedRoute>} />

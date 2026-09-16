@@ -6,6 +6,7 @@ import { ClientDirection, ClientDirectionType } from './entities/client-directio
 import { ClientReference } from './entities/client-reference.entity';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
+import { clampPagination } from '../../commons/dto/pagination.dto';
 
 @Injectable()
 export class ClientsService {
@@ -15,8 +16,7 @@ export class ClientsService {
   ) {}
 
   findAll(companyId: string, query: { page?: number; limit?: number }) {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const { page, limit } = clampPagination(query);
     return this.repo.findAndCount({
       where: { companyId },
       skip: (page - 1) * limit,

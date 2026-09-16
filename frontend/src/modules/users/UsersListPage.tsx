@@ -104,7 +104,7 @@ export function UsersListPage() {
   };
 
   const profileOptions = (currentProfileId?: string) => {
-    let opts = profiles.filter((p) => isSuperAccount || p.id !== SUPER_ADMIN_PROFILE_ID);
+    const opts = profiles.filter((p) => isSuperAccount || p.id !== SUPER_ADMIN_PROFILE_ID);
     if (currentProfileId && !opts.find((p) => p.id === currentProfileId)) {
       opts.unshift({ id: currentProfileId, name: 'Perfil actual' });
     }

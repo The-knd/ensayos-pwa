@@ -1,8 +1,19 @@
+# Redes segregadas (ISO 27001 A.9 / OWASP):
+#   edge    — expuesta al host: frontend (vite) y kong. Único frontal.
+#   backend — internal (sin egreso a internet): kong ↔ backend ↔ redis.
+#   data    — internal: backend ↔ postgres (+ redis legado, ver abajo).
+# Publicamos puertos al host SOLO desde servicios de `edge`/publicados a
+# loopback para el desarrollo nativo (WSL): postgres 5433, redis 6379.
+#
+# Redis vive en `backend` y `data` porque sigue usándose como cache de
+# rate-limit/métricas por Kong y como redis del backend; aun así NUNCA está
+# en `edge` (no expuesto fuera de Docker salvo su puerto a loopback).
 services:
   postgres:
     image: postgres:16-alpine
     container_name: pwa-postgres
     restart: unless-stopped
+    networks: [data]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pwa_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pwa_pass}
@@ -21,9 +32,13 @@ services:
     image: redis:7-alpine
     container_name: pwa-redis
     restart: unless-stopped
+    networks: [data, backend]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD en el .env raiz del proyecto}
-    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
+    command:
+      - sh
+      - -c
+      - redis-server --appendonly yes --maxmemory 160mb --maxmemory-policy allkeys-lru --requirepass "$REDIS_PASSWORD"
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -41,6 +56,7 @@ services:
       target: development
     container_name: pwa-backend
     restart: unless-stopped
+    networks: [backend, data]
     env_file:
       - ./backend/.env
     depends_on:
@@ -53,6 +69,9 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+    # node corre de serie como usuario no-root en la imagen; sin capabilities
+    # adicionales en dev+prod.
+    cap_drop: [ALL]
 
   frontend:
     build:
@@ -61,6 +80,7 @@ services:
       target: development
     container_name: pwa-frontend
     restart: unless-stopped
+    networks: [edge]
     environment:
       VITE_PROXY_TARGET: http://kong:8000
     ports:
@@ -76,6 +96,7 @@ services:
     image: kong:3.6
     container_name: pwa-kong
     restart: unless-stopped
+    networks: [edge, backend]
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong/kong.yml
@@ -84,6 +105,7 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Define JWT_ACCESS_SECRET en el .env raiz del proyecto}
       KONG_CORS_ORIGINS: ${KONG_CORS_ORIGINS:-'["http://localhost:5173"]'}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD en el .env raiz del proyecto}
+      KONG_METRICS_API_KEY: ${KONG_METRICS_API_KEY:?Define KONG_METRICS_API_KEY en el .env raiz del proyecto}
     volumes:
       - ./backend/kong:/kong
     entrypoint: ["/bin/sh", "/kong/start.sh"]
@@ -101,6 +123,16 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+  data:
+    driver: bridge
+    internal: true
 
 volumes:
   pgdata:

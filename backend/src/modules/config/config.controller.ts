@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UploadedFile,
@@ -31,7 +32,7 @@ import { Permissions } from '../../commons/decorators/permissions.decorator';
 import { CurrentTenant } from '../../commons/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { ConfigService } from './config.service';
-import { CreateCompanyDto } from './dto/company.dto';
+import { CreateCompanyDto, UpdateCompanyDto } from './dto/company.dto';
 import { RbacService } from '../rbac/rbac.service';
 import { ModulePlacementsService } from '../placements/module-placements.service';
 import { SUPER_ADMIN_PROFILE_ID } from '../../commons/constants';
@@ -182,7 +183,7 @@ export class ConfigController {
 
   @Patch()
   @Permissions('config.update')
-  update(@CurrentTenant() companyId: string, @Body() dto: any) {
+  update(@CurrentTenant() companyId: string, @Body() dto: UpdateCompanyDto) {
     return this.service.update(companyId, dto);
   }
 
@@ -225,7 +226,11 @@ export class ConfigController {
 
   @Patch('companies/:id')
   @Permissions('config.update')
-  updateCompany(@CurrentUser() user, @Param('id') id: string, @Body() dto: any) {
+  updateCompany(
+    @CurrentUser() user,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateCompanyDto,
+  ) {
     this.ensureSuperAdmin(user);
     return this.service.update(id, dto);
   }
@@ -236,7 +241,7 @@ export class ConfigController {
   uploadCompanyLogo(
     @CurrentUser() user,
     @UploadedFile() file: Express.Multer.File,
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     this.ensureSuperAdmin(user);
     if (!file) throw new BadRequestException('No se recibió ningún archivo');

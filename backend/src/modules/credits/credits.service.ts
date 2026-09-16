@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Credit, CreditStatus } from './entities/credit.entity';
 import { CreditDocument } from './entities/credit-document.entity';
 import { ClientsService } from '../clients/clients.service';
+import { clampPagination } from '../../commons/dto/pagination.dto';
 import { CreditScoringService } from './credit-scoring.service';
 import { CreateCreditDto } from './dto/create-credit.dto';
 import { StudyCreditDto } from './dto/study-credit.dto';
@@ -19,8 +20,7 @@ export class CreditsService {
   ) {}
 
   findAll(companyId: string, query: { page?: number; limit?: number }) {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const { page, limit } = clampPagination(query);
     return this.repo.findAndCount({
       where: { companyId },
       relations: ['client'],

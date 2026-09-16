@@ -8,6 +8,11 @@ export const envValidationSchema = Joi.object({
   DB_USER: Joi.string().required(),
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
+  DB_POOL_SIZE: Joi.number().integer().min(1).max(50).default(10),
+  DB_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(500).default(5000),
+  DB_QUERY_TIMEOUT_MS: Joi.number().integer().min(500).default(10000),
+  DB_STATEMENT_TIMEOUT_MS: Joi.number().integer().min(500).default(12000),
+  DB_IDLE_TX_TIMEOUT_MS: Joi.number().integer().min(500).default(15000),
   // Rol de aplicación NO owner (RLS realmente activo). Opcional: si se define,
   // el runtime se conecta con él; las migraciones siempre usan DB_USER.
   DB_APP_USER: Joi.string().allow('').optional(),

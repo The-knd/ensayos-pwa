@@ -6,11 +6,14 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Production stage
+# Production stage (no-root: USER nginx + puerto 8080 sin NET_BIND_SERVICE)
 FROM nginx:alpine AS production
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+COPY nginx-main.conf /etc/nginx/nginx.conf
+RUN mkdir -p /var/cache/nginx /tmp && chown -R nginx:nginx /var/cache/nginx /tmp
+EXPOSE 8080
+USER nginx
 CMD ["nginx", "-g", "daemon off;"]
 
 # Development stage (default)

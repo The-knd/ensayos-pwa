@@ -1,9 +1,15 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SwitchCompanyDto } from './dto/switch-company.dto';
+import {
+  PasskeyCheckDto,
+  PasskeyLoginOptionsDto,
+  PasskeyLoginVerifyDto,
+  PasskeyRegisterVerifyDto,
+} from './dto/passkey.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Device } from './entities/device.entity';
@@ -13,6 +19,7 @@ import { JwtAuthGuard } from '../../commons/guards/jwt-auth.guard';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import Redis from 'ioredis';
 import { StructuredLogger } from '../../commons/logger/structured-logger.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 const CHALLENGE_TTL = 300;
 
@@ -25,6 +32,7 @@ export class AuthController {
     @Inject(Redis) private redis: Redis,
     private passkeyStrategy: PasskeyAuthStrategy,
     private logger: StructuredLogger,
+    private metrics: MetricsService,
   ) {}
 
   private async registerChallenge(userId: string, challenge: string): Promise<void> {
@@ -75,6 +83,7 @@ export class AuthController {
       this.logger.audit('auth.login.failed', {
         meta: { email: dto.email, reason: (e as any)?.message },
       });
+      this.metrics.incAuthFailure('local');
       if (e instanceof UnauthorizedException) throw new UnauthorizedException('Credenciales inválidas');
       throw e;
     }
@@ -126,13 +135,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async registerVerify(
     @CurrentUser() user,
-    @Body() body: { response: any; deviceName?: string },
+    @Body() body: PasskeyRegisterVerifyDto,
   ) {
     if (!body?.response) throw new BadRequestException('Falta el response de WebAuthn');
     const challenge = await this.consumeRegisterChallenge(user.sub);
     await this.passkeyStrategy.verifyRegistration(
       user.sub,
-      body.response,
+      body.response as any,
       challenge,
       body.deviceName,
     );
@@ -143,16 +152,13 @@ export class AuthController {
 
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('passkeys/check')
-  checkPasskeys(@Body() body: { email: string }) {
+  checkPasskeys(@Body() body: PasskeyCheckDto) {
     return this.authService.checkPasskeys(body);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('passkeys/login/options')
-  async loginOptions(@Body() body: { email: string }) {
-    if (!body?.email) {
-      throw new BadRequestException('Email es obligatorio');
-    }
+  async loginOptions(@Body() body: PasskeyLoginOptionsDto) {
     // Ojo: la challenge queda keyed solo por email (no es viable incluir el
     // companyId por diseño del flujo público). Se mitiga con rate-limit por IP.
     const options = await this.passkeyStrategy.getAuthenticationOptions(body.email);
@@ -163,15 +169,13 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('passkeys/login/verify')
   async loginVerify(
-    @Body() body: { email: string; response: any },
+    @Body() body: PasskeyLoginVerifyDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (!body?.email || !body?.response) {
-      throw new BadRequestException('Email y response son obligatorios');
-    }
+    if (!body?.response) throw new BadRequestException('Email y response son obligatorios');
     const challenge = await this.consumeLoginChallenge(`${body.email}`);
     const result = await this.passkeyStrategy.authenticate({
-      response: body.response,
+      response: body.response as any,
       expectedChallenge: challenge,
       email: body.email,
     });
@@ -194,7 +198,7 @@ export class AuthController {
 
   @Delete('passkeys/:id')
   @UseGuards(JwtAuthGuard)
-  async removeDevice(@CurrentUser() user, @Param('id') id: string) {
+  async removeDevice(@CurrentUser() user, @Param('id', new ParseUUIDPipe()) id: string) {
     const device = await this.deviceRepo.findOne({ where: { id, userId: user.sub } });
     if (!device) throw new NotFoundException('Dispositivo no encontrado');
     await this.deviceRepo.remove(device);
