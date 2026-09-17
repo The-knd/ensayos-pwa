@@ -18,12 +18,12 @@ export class PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(500)
   limit?: number;
 }
 
 export function clampPagination(query: { page?: number; limit?: number }) {
   const page = Math.max(1, Math.min(query.page ?? 1, 100000));
-  const limit = Math.max(1, Math.min(query.limit ?? 20, 100));
+  const limit = Math.max(1, Math.min(query.limit ?? 20, 500));
   return { page, limit };
 }

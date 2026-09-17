@@ -38,7 +38,9 @@ httpClient.interceptors.request.use((config) => {
     const isAuthRequest =
       url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/logout');
     if (!isAuthRequest) {
-      config.headers['Idempotency-Key'] = idempotencyKey();
+      const key = idempotencyKey();
+      (config as any).__idempotencyKey = key;
+      config.headers['Idempotency-Key'] = key;
     }
   }
   return config;
@@ -64,7 +66,7 @@ let queue: Array<() => void> = [];
 httpClient.interceptors.response.use(
   (response) => {
     const method = (response.config.method ?? 'get').toLowerCase();
-    if (['post', 'patch', 'put', 'delete'].includes(method) && response.config.headers?.['Idempotency-Key']) {
+    if (['post', 'patch', 'put', 'delete'].includes(method) && (response.config as any).__idempotencyKey) {
       clearIdempotencyKey();
     }
     return response;

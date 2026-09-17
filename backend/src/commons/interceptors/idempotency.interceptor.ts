@@ -77,7 +77,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       map((value) => {
         const res = context.switchToHttp().getResponse();
         const body = value ?? { success: true };
-        const status = res.statusCode || 200;
+        const status = res.statusCode && res.statusCode !== 200 ? res.statusCode : (method === 'POST' ? 201 : 200);
         this.redis
           .set(cacheKey, JSON.stringify({ body, status }), 'EX', RESULT_TTL_SECONDS)
           .catch(() => undefined);

@@ -77,11 +77,11 @@ Comprobación técnica:
 # El SPA lo hace automáticamente (httpClient.ts); con curl se extrae del jar:
 CSRF=$(awk '/csrf_token/{print $NF}' /tmp/cj)
 curl -s -c /tmp/cj -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"superadmin@empresa1.com","password":"Password123!","companyId":"11111111-1111-1111-1111-111111111111"}' -o /dev/null -w '%{http_code}\n'        # 201
+  -d '{"email":"superadmin@empresa1.com","password":"Password123!"}' -o /dev/null -w '%{http_code}\n'        # 201
 CSRF=$(awk '/csrf_token/{print $NF}' /tmp/cj)
 curl -s -b /tmp/cj -X POST localhost:3000/api/auth/passkeys/register/options -H 'Content-Type: application/json' -H "X-CSRF-Token: $CSRF" -d '{}' -o /dev/null -w '%{http_code}\n'  # 201
 curl -s -X POST localhost:3000/api/auth/passkeys/login/options -H 'Content-Type: application/json' \
-  -d '{"email":"nobody@x.co","companyId":"11111111-1111-1111-1111-111111111111"}' -o /dev/null -w '%{http_code}\n'  # 201 (allowCredentials:[])
+  -d '{"email":"nobody@x.co"}' -o /dev/null -w '%{http_code}\n'  # 201 (allowCredentials:[])
 curl -s -b /tmp/cj localhost:3000/api/auth/passkeys | head -c 200   # lista de dispositivos
 ```
 Passkey inválida devuelve 401 (no 500).
