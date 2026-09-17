@@ -15,6 +15,9 @@ import { RedisModule } from './modules/redis/redis.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { ModulePlacementsModule } from './modules/placements/module-placements.module';
 import { CalculatorModule } from './modules/calculator/calculator.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
+import { PromosModule } from './modules/promos/promos.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { MetricsMiddleware } from './modules/metrics/metrics.middleware';
 import { CsrfMiddleware } from './commons/middlewares/csrf.middleware';
@@ -78,6 +81,9 @@ import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.mi
     FeatureFlagsModule,
     ModulePlacementsModule,
     CalculatorModule,
+    CatalogModule,
+    PromosModule,
+    ReportsModule,
     HealthModule,
     MetricsModule,
   ],

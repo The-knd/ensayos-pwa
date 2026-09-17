@@ -37,5 +37,8 @@ RUN apk add --no-cache python3 make g++ \
     && npm ci \
     && npm rebuild bcrypt --build-from-source
 COPY . .
+RUN chown -R node:node /app \
+    && chmod -R o-w /app
+USER node
 EXPOSE 3000
 CMD ["npm", "run", "start:dev"]

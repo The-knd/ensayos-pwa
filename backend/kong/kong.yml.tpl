@@ -1,23 +1,10 @@
 _format_version: "3.0"
 
-# Un único servicio backend. strip_path:false porque el backend ya expone
-# el prefijo global "api" (app.setGlobalPrefix('api')) — Kong reenvía el
-# path completo tal cual, sin reescrituras.
-services:
-  - name: backend-service
-    protocol: http
-    host: backend
-    port: 3000
-    path: /
-    # Timeouts defensivos (ISO 27001 / OWASP A04): el gateway no debe quedar
-    # colgado si el backend se bloquea; 3 reintentos por request.
-    retries: 3
-    connect_timeout: 5000
-    write_timeout: 10000
-    read_timeout: 10000
-    # Healthchecks activo (cada 5s hacia /api/health) + pasivo (circuit
-    # breaker sobre 5xx/429): con un único target quita/recupera backend del
-    # balanceo automáticamente.
+# Healthchecks activo (cada 5s hacia /api/health) + pasivo (circuit
+# breaker sobre 5xx/429): con un único target quita/recupera backend del
+# balanceo automáticamente.
+upstreams:
+  - name: backend
     healthchecks:
       active:
         type: http
@@ -48,6 +35,22 @@ services:
     targets:
       - target: backend:3000
         weight: 100
+
+# Un único servicio backend. strip_path:false porque el backend ya expone
+# el prefijo global "api" (app.setGlobalPrefix('api')) — Kong reenvía el
+# path completo tal cual, sin reescrituras. host apunta al upstream "backend".
+services:
+  - name: backend-service
+    protocol: http
+    host: backend
+    port: 3000
+    path: /
+    # Timeouts defensivos (ISO 27001 / OWASP A04): el gateway no debe quedar
+    # colgado si el backend se bloquea; 3 reintentos por request.
+    retries: 3
+    connect_timeout: 5000
+    write_timeout: 10000
+    read_timeout: 10000
     routes:
       # Endpoints públicos de auth, cada uno con su PROPIO bucket de rate-limit
       # (M-1): así un atacante que agota el límite de login/passkeys NO priva
@@ -72,9 +75,10 @@ services:
               # Falla cerrado: si Redis no responde, se bloquea el login en vez
               # de dejarlo sin límite.
               fault_tolerant: false
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       - name: auth-companies-route
         paths:
@@ -92,9 +96,10 @@ services:
               minute: 60
               policy: redis
               fault_tolerant: false
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       - name: auth-refresh-route
         paths:
@@ -112,9 +117,10 @@ services:
               minute: 60
               policy: redis
               fault_tolerant: false
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       - name: auth-logout-route
         paths:
@@ -132,9 +138,10 @@ services:
               minute: 60
               policy: redis
               fault_tolerant: false
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       - name: auth-passkeys-check-route
         paths:
@@ -152,9 +159,10 @@ services:
               minute: 20
               policy: redis
               fault_tolerant: false
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       - name: auth-passkeys-login-route
         paths:
@@ -172,9 +180,10 @@ services:
               minute: 10
               policy: redis
               fault_tolerant: false
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       # Archivos servidos públicamente (logos de empresa, etc.) — solo GET.
       - name: uploads-route
@@ -252,9 +261,10 @@ services:
               minute: 60
               policy: redis
               fault_tolerant: true
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
 
       # Todo lo demás bajo /api requiere JWT válido en la cookie access_token.
       # Esto incluye /api/auth/passkeys/register|list|:id (no matchean el
@@ -281,9 +291,10 @@ services:
               policy: redis
               # Tolerante: un problema pasajero de Redis no debe tumbar toda la API.
               fault_tolerant: true
-              redis_host: redis
-              redis_port: 6379
-              redis_password: __REDIS_PASSWORD__
+              redis:
+                host: redis
+                port: 6379
+                password: __REDIS_PASSWORD__
           # Límite de payload: el mayor body legítimo es el upload de logo
           # (máx 5MB backend) → 6MB a nivel gateway como tope.
           - name: request-size-limiting

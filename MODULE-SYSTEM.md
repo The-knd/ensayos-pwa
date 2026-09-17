@@ -222,7 +222,30 @@ empresa, o ir a `/global-config` para alta de empresas / módulos globales.
 
 ---
 
-## 6. Notas
+## 7. Módulos de prueba (para validar los flujos)
+
+Tres módulos **backend + frontend mínimos** para probar registro, definiciones globales,
+definiciones por empresa y publicación entre empresas sin tocar datos reales:
+
+| Módulo | `module`/prefijo | Path frontend | Permisos (el 1º es `perm` del tile) | Extra |
+| ------ | ---------------- | ------------- | ----------------------------------- | ----- |
+| Catálogo | `catalog` | `/catalog` | `catalog.ver`, `catalog.cargar` | solo home |
+| Promociones | `promos` | `/promos`, `/promos/nueva` | `promos.ver`, `promos.crear`, `promos.detalle` | sub-ruta `/promos/nueva` protegida por `promos.crear` + detalle por `promos.detalle` |
+| Reportes | `reports` | `/reports` | `reports.ver`, `reports.generar`, `reports.exportar` | solo home |
+
+- Backend: `GET <module>/context` (sin permiso) + endpoints protegidos con
+  `@Permissions('module.accion')` (mismo patrón que `calculator`). Sin persistencia.
+- Frontend: cada home llama `loadModuleContext('<module>')`; los botones/links se ocultan con
+  `Can`/`permissions.includes`; el backend igual devuelve `403` sin el permiso.
+- **Registro por empresa** (admin): `Configuración → Módulos` → crear con `key`, `module`,
+  `path` y `operations` del cuadro (la 1ª operación `ver` define el `perm` del tile en Home).
+- **Definición global** (superadmin): `Configuración global → Módulos` → crear con `global:true`
+  → se distribuye FAB a todas las empresas activas.
+- **Publicación entre empresas** (superadmin): usa el botón publicar existente (`publish` → FAB).
+- **Permisos**: `Perfiles → Permisos` habilita `module.accion` (quedan deshabilitados al
+  registrarse). Reescribir la caché RBAC del usuario o esperar TTL 120 s.
+
+## 8. Notas
 
 - Los IDs seed (`11111111-1111-1111-8111-111111111111`, `22222222-…`, …) **no son UUID v4**; por
   eso los DTOs de módulos validan `@IsUUID()` (sin versión).

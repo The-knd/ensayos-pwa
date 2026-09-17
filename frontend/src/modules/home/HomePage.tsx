@@ -42,6 +42,15 @@ const ICONS: Record<string, React.ReactNode> = {
   calculadora: (
     <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M9 7h6M9 11h.01M12 11h.01M15 11h.01M9 14h.01M12 14h.01M15 14h.01M9 17h.01M12 17h.01M15 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
   ),
+  catalogo: (
+    <svg viewBox="0 0 24 24" fill="none"><path d="M3 5h18v16H3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="M7 10h10M7 14h10M7 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+  ),
+  promos: (
+    <svg viewBox="0 0 24 24" fill="none"><path d="M7 12l4-4m2 8 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M9 9h.01M15 15h.01M6.2 21.5l-.3-5-4.5-2.4 3.9-3.4L4.6 6l5.3.9 2.6-4.5 2.7 4.5L20.5 6l-1.4 4.7 4 3.4-4.6 2.3-.2 5.1-5.5-1.1-4.6 1.6Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+  ),
+  reportes: (
+    <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h14v18H5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="M8 7h8M8 11h8M8 15h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+  ),
   usuarios: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
   ),

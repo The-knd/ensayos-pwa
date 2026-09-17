@@ -29,6 +29,10 @@ import { RoutesPage } from './modules/routes/RoutesPage';
 import { BrainPage } from './modules/brain/BrainPage';
 import { ProfilesPage } from './modules/profiles/ProfilesPage';
 import { CalculatorPage } from './modules/calculator/CalculatorPage';
+import { CatalogPage } from './modules/catalog/CatalogPage';
+import { PromosPage } from './modules/promos/PromosPage';
+import { PromoCreatePage } from './modules/promos/PromoCreatePage';
+import { ReportsPage } from './modules/reports/ReportsPage';
 import { SuperAdminGlobalConfigPage } from './modules/global/SuperAdminGlobalConfigPage';
 
 // Vista de pruebas (callbacks de créditos): solo se empaqueta en desarrollo
@@ -202,6 +206,10 @@ export function App() {
           <Route path="/routes" element={<ProtectedRoute><RoutesPage /></ProtectedRoute>} />
           <Route path="/brain" element={<ProtectedRoute><BrainPage /></ProtectedRoute>} />
           <Route path="/calculator" element={<ProtectedRoute><CalculatorPage /></ProtectedRoute>} />
+          <Route path="/catalog" element={<ProtectedRoute><CatalogPage /></ProtectedRoute>} />
+          <Route path="/promos" element={<ProtectedRoute><PromosPage /></ProtectedRoute>} />
+          <Route path="/promos/nueva" element={<ProtectedRoute><PromoCreatePage /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </BrowserRouter>
