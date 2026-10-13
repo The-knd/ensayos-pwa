@@ -4,6 +4,7 @@ import { httpClient } from '../../shared/api/httpClient';
 import { useAuth, CompanySummary } from '../auth/AuthContext';
 import { ModulesManagement } from '../config/ModulesManagement';
 import { SharedClientsManagement } from './SharedClientsManagement';
+import { IntegrationsManagement } from './IntegrationsManagement';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
 
 interface ListCompany extends CompanySummary {
@@ -15,6 +16,7 @@ const TABS = [
   { id: 'companies', label: 'Empresas' },
   { id: 'modules', label: 'Módulos' },
   { id: 'clients', label: 'Clientes globales' },
+  { id: 'integrations', label: 'Integraciones' },
 ];
 
 export function SuperAdminGlobalConfigPage() {
@@ -90,7 +92,7 @@ export function SuperAdminGlobalConfigPage() {
       <div className="s2-head">
         <h1 className="page-title">Configuración global</h1>
         <p className="lead below">
-          Creá empresas, configurá sus datos, administrá los módulos y los clientes globales de la plataforma.
+          Creá empresas, configurá sus datos, administrá los módulos, los clientes globales y las integraciones de la plataforma.
           <button
             onClick={async () => { await exitCompany(); navigate('/home'); }}
             style={{ marginLeft: 12, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
@@ -177,6 +179,8 @@ export function SuperAdminGlobalConfigPage() {
         {tab === 'modules' && <ModulesManagement mode="global" />}
 
         {tab === 'clients' && <SharedClientsManagement />}
+
+        {tab === 'integrations' && <IntegrationsManagement />}
       </div>
     </div>
   );
