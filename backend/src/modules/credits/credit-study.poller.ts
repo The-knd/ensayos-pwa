@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { DataSource, EntityManager } from 'typeorm';
+import { inTenant } from '../../commons/database/in-tenant';
 import { Credit, CreditStatus } from './entities/credit.entity';
 import { CreditsService } from './credits.service';
 
@@ -86,9 +87,6 @@ export class CreditStudyPoller implements OnModuleInit {
   }
 
   private inTenant<T>(companyId: string, work: (m: EntityManager) => Promise<T>): Promise<T> {
-    return this.dataSource.transaction(async (m) => {
-      await m.query(`SELECT set_config('app.current_company_id', $1, true)`, [companyId]);
-      return work(m);
-    });
+    return inTenant(this.dataSource, companyId, work);
   }
 }

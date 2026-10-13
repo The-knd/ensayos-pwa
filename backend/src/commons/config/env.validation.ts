@@ -48,4 +48,26 @@ export const envValidationSchema = Joi.object({
   SAMAN_SIMULATED_RESULT: Joi.string().valid('approved', 'rejected', 'failed', '').default('approved'),
   // Cada cuánto el backend resuelve en segundo plano los borradores pendientes (0 = desactivado).
   CREDIT_STUDY_POLL_INTERVAL_MS: Joi.number().integer().min(0).default(30000),
+
+  // Integraciones con sistemas externos (SAP). Apagadas por defecto.
+  INTEGRATIONS_ENABLED: Joi.boolean().default(false),
+  // Clave AES-256 de las credenciales guardadas: 32 bytes aleatorios en base64
+  // (openssl rand -base64 32). Si se pierde, las credenciales quedan ilegibles.
+  CREDENTIALS_KEY: Joi.string()
+    .base64()
+    .custom((value: string, helpers) =>
+      Buffer.from(value, 'base64').length === 32 ? value : helpers.message({ custom: 'CREDENTIALS_KEY debe ser de 32 bytes en base64' }),
+    )
+    .when('INTEGRATIONS_ENABLED', { is: true, then: Joi.required(), otherwise: Joi.optional().allow('') }),
+  // Hosts admitidos en la base_url de una conexión (coma separada; los mismos
+  // que allowed_hosts en egress-proxy/squid.conf). Un ".dominio" admite subdominios.
+  INTEGRATIONS_ALLOWED_HOSTS: Joi.string().allow('').default(''),
+  // Proxy de salida para las integraciones; vacío = el de Saman (SAMAN_HTTPS_PROXY).
+  EGRESS_HTTPS_PROXY: Joi.string().uri().allow('').default(''),
+  INTEGRATIONS_REQUEST_TIMEOUT_MS: Joi.number().integer().min(1000).default(15000),
+  // Tras un 401/403 no se vuelve a llamar al sistema de ESA empresa durante este tiempo.
+  INTEGRATIONS_AUTH_PAUSE_MS: Joi.number().integer().min(0).default(300000),
+  // Cada cuánto el worker procesa sincronizaciones pendientes y programadas (0 = apagado).
+  CLIENT_SYNC_POLL_INTERVAL_MS: Joi.number().integer().min(0).default(60000),
+  CLIENT_SYNC_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
 });
