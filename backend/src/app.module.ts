@@ -29,6 +29,7 @@ import { NewProductsModule } from './modules/new-products/new-products.module';
 import { RoutesModule } from './modules/routes/routes.module';
 import { BrainModule } from './modules/brain/brain.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { MetricsMiddleware } from './modules/metrics/metrics.middleware';
 import { CsrfMiddleware } from './commons/middlewares/csrf.middleware';
 import { envValidationSchema } from './commons/config/env.validation';
@@ -107,6 +108,7 @@ import { CorrelationIdMiddleware } from './commons/middlewares/correlation-id.mi
     BrainModule,
     HealthModule,
     MetricsModule,
+    IntegrationsModule,
   ],
   providers: [
     {
