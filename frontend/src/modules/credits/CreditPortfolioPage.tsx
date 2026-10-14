@@ -8,6 +8,7 @@ import { useTheme } from '../../shared/theme/ThemeContext';
 interface PortfolioCredit {
   id: string;
   applicationNumber: string;
+  nit?: string | null;
   approvedLimit: string | null;
   status: string;
   client?: { fullName: string; legalName?: string; documentNumber: string };
@@ -72,7 +73,7 @@ export function CreditPortfolioPage() {
                       {c.client?.legalName || c.client?.fullName}
                     </strong>
                     <div style={{ color: 'var(--faint)', fontSize: 11, marginTop: 2 }}>
-                      {c.applicationNumber || '—'} · NIT {c.client?.documentNumber}
+                      {c.applicationNumber || '—'} · NIT {c.client?.documentNumber ?? c.nit}
                     </div>
                   </div>
                   <span

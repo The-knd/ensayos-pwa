@@ -27,6 +27,8 @@ interface StudyPreview {
   simulated: boolean;
   endpoint: string;
   request: { tipo: string; empresa: string; identificacion: string; externas: boolean };
+  /** clientId: el cliente que quedará vinculado; null si el documento no está registrado. */
+  credit: { clientId: string | null };
 }
 /** ?desde=<id>: "Corregir y crear de nuevo" rellena el formulario con un borrador anterior. */
 const FROM_PARAM = 'desde';
@@ -75,6 +77,9 @@ export function CreditStudyPage() {
   const digits = nit;
   const nitCheck = validateNit(nit, client?.documentNumber, personType);
   const confirmMatches = digits.length > 0 && nitConfirm === digits;
+  // Sin cliente registrado también se puede estudiar: basta con el documento
+  // válido y confirmado (el cliente se registra antes de firmar, en el paso 3).
+  const documentConfirmed = nitCheck.ok && confirmMatches;
 
   // "Corregir y crear de nuevo": respuestas, tipo de persona y NIT del borrador
   // anterior. La firma de autorización no se copia: el cliente firma otra vez.
@@ -150,6 +155,7 @@ export function CreditStudyPage() {
     clientId: client?.id,
     // Completo, con DV y sin '-'. El guion que espera Saman lo agrega el backend.
     nit,
+    nitConfirm,
     personType,
     yearsExperience: Number(yearsExperience),
     opportunityValue: Number(opportunityValue),
@@ -160,10 +166,6 @@ export function CreditStudyPage() {
   /** 1b → 1c: valida en el front, pide al backend la petición que se enviará a Saman y la muestra. */
   const goToConfirmation = async () => {
     setError('');
-    if (!client) {
-      setError(`El ${idName} no corresponde a un cliente registrado.`);
-      return;
-    }
     if (!nitCheck.ok) {
       setError(nitCheck.error);
       return;
@@ -206,7 +208,7 @@ export function CreditStudyPage() {
 
   const logo = theme.logoUrl || undefined;
   const consentSigned = !!signatureData;
-  const clientReady = !!client && consentSigned && nitCheck.ok && confirmMatches;
+  const clientReady = consentSigned && documentConfirmed;
   const nitError = nitTouched && !nitCheck.ok ? nitCheck.error : '';
   const confirmError = confirmTouched && nit.length > 0 && !confirmMatches ? `La confirmación no coincide con el ${idName}.` : '';
 
@@ -232,7 +234,7 @@ export function CreditStudyPage() {
   // Cualquier cambio en los datos deja la vista previa desactualizada: se vuelve a pedir al revisar.
   useEffect(() => {
     setPreview(null);
-  }, [client, nit, personType, signatureData, yearsExperience, opportunityValue, reliabilityScore]);
+  }, [client, nit, nitConfirm, personType, signatureData, yearsExperience, opportunityValue, reliabilityScore]);
 
   const goToIdentification = () => setSearchParams({ [SUB_STEP_PARAM]: IDENTIFICATION });
 
@@ -274,6 +276,18 @@ export function CreditStudyPage() {
       </div>
     );
 
+  const consentSection = (
+    <>
+      <div className="attnote">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+        <p>Antes de correr el algoritmo, el cliente debe autorizar el tratamiento de sus datos personales.</p>
+      </div>
+
+      {/* Variante 'inline': el pad vive en el cuerpo, bajo la nota. */}
+      {CONSENT_UI_MODE === 'inline' && consentCard}
+    </>
+  );
+
   const part = onConfirmation ? 3 : onIdentification ? 2 : 1;
   const subSteps = (
     <div className="substeps" aria-label={`Paso 1, parte ${part} de 3`}>
@@ -283,7 +297,7 @@ export function CreditStudyPage() {
     </div>
   );
 
-  if (onConfirmation && preview && client) {
+  if (onConfirmation && preview) {
     const req = preview.request;
     return (
       <div className="s2 flow crflow">
@@ -321,7 +335,17 @@ export function CreditStudyPage() {
             <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', color: 'var(--faint)', marginBottom: 9 }}>
               SE REGISTRARÁ EN LA SOLICITUD
             </div>
-            <div className="stk"><div className="k">Cliente</div><div className="v">{client.legalName || client.fullName} · {personType === 'juridica' ? 'persona jurídica' : 'persona natural'}</div></div>
+            <div className="stk">
+              <div className="k">Cliente</div>
+              <div className="v">
+                {client
+                  ? client.legalName || client.fullName
+                  : preview.credit.clientId
+                    ? `Registrado con ${idName} ${nit}`
+                    : `Sin cliente registrado (${idName} ${nit})`}{' '}
+                · {personType === 'juridica' ? 'persona jurídica' : 'persona natural'}
+              </div>
+            </div>
             <div className="stk"><div className="k">Evaluación comercial</div><div className="v">{yearsExperience} años · ${opportunity.toLocaleString('es-CO')} · confiabilidad {reliabilityScore}/5</div></div>
             <div className="stk"><div className="k">Autorización de datos</div><div className="v" style={{ color: 'var(--green-deep)' }}>Firmada ✓</div></div>
           </div>
@@ -546,23 +570,21 @@ export function CreditStudyPage() {
               </button>
             </div>
 
-            <div className="attnote">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
-              <p>Antes de correr el algoritmo, el cliente debe autorizar el tratamiento de sus datos personales.</p>
-            </div>
-
-            {/* Variante 'inline': el pad vive en el cuerpo, bajo la nota. */}
-            {CONSENT_UI_MODE === 'inline' && consentCard}
+            {consentSection}
           </>
         )}
 
         {digits.length >= 3 && !searching && !client && results.length === 0 && (
-          <div className="card" style={{ textAlign: 'center', borderColor: '#f6caca', background: '#fdecec' }}>
-            <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', color: '#b00020', marginBottom: 9 }}>CLIENTE NO ENCONTRADO</div>
+          <div className="card" style={{ textAlign: 'center', borderColor: '#f3dfb0', background: '#fff8e8' }}>
+            <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', color: '#8a5a00', marginBottom: 9 }}>CLIENTE NO REGISTRADO</div>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>No existe un cliente registrado que coincida con {nit}.</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              Puedes hacer el estudio igual si confirmas el {idName}. El cliente debe quedar registrado antes de enviar los
+              documentos a firma.
+            </div>
             {canCreateClient ? (
-              <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={goCreateClient}>
-                Crear cliente <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" /></svg>
+              <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={goCreateClient}>
+                Crear cliente <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
               </button>
             ) : (
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
@@ -571,6 +593,8 @@ export function CreditStudyPage() {
             )}
           </div>
         )}
+
+        {!client && !searching && documentConfirmed && consentSection}
 
         {error && <p style={{ color: '#c62828', fontSize: 12, margin: '10px 2px' }}>{error}</p>}
       </div>
@@ -584,7 +608,7 @@ export function CreditStudyPage() {
             {submitting ? 'Validando…' : 'Revisar solicitud'}
             <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
-          <div className="bhelp">Se habilita al validar el {idName}, confirmarlo y firmar la autorización de datos. Antes de enviar verás la solicitud completa.</div>
+          <div className="bhelp">Se habilita al validar el {idName}, confirmarlo y firmar la autorización de datos (no hace falta que el cliente esté registrado). Antes de enviar verás la solicitud completa.</div>
         </div>
       </div>
 

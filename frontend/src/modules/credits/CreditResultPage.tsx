@@ -250,7 +250,6 @@ export function CreditResultPage() {
           <strong>Procesando la solicitud</strong>
           {/* key: reinicia la animación de entrada con cada mensaje nuevo. */}
           <p key={message} className="wait-msg" role="status" aria-live="polite">{message}</p>
-          <p style={{ fontSize: 10.5 }}>Puede tardar hasta un minuto.</p>
         </div>
       </div>
     );
@@ -328,7 +327,6 @@ export function CreditResultPage() {
               <div className="cc">
                 <div className="t">Con intereses remuneratorios</div>
                 <div className="d">Se causan intereses sobre el saldo.</div>
-                <span className="tag">POR DEFINIR EN JUNTA</span>
               </div>
             </div>
             <div className="crow r">
