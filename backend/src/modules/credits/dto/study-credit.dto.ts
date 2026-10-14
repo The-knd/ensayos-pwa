@@ -15,8 +15,14 @@ import {
 import { ClientPersonType } from '../../clients/entities/client.entity';
 
 export class StudyCreditDto {
+  /**
+   * Cliente registrado al que corresponde el documento. Opcional: sin él, el
+   * estudio se hace solo con el documento digitado (y su confirmación), y
+   * study() lo vincula si encuentra un cliente con ese documento.
+   */
+  @IsOptional()
   @IsUUID()
-  clientId: string;
+  clientId?: string;
 
   /**
    * Persona jurídica: NIT completo, con DV. Persona natural: número de
@@ -25,6 +31,10 @@ export class StudyCreditDto {
    */
   @Matches(/^\d{5,16}$/, { message: "El NIT o número de identificación va solo con dígitos, sin '-'" })
   nit: string;
+
+  /** El documento digitado por segunda vez; debe ser igual a `nit`. */
+  @IsString()
+  nitConfirm: string;
 
   // --- Evaluación comercial (cada pregunta tiene su columna en credits) ---
 

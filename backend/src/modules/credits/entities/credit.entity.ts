@@ -46,10 +46,11 @@ export class Credit extends BaseEntity {
   @JoinColumn({ name: 'company_id' })
   company: Company;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  /** Null si el estudio se hizo con un documento sin cliente registrado. */
+  @Column({ name: 'client_id', type: 'uuid', nullable: true })
+  clientId: string | null;
 
-  @ManyToOne(() => Client)
+  @ManyToOne(() => Client, { nullable: true })
   @JoinColumn({ name: 'client_id' })
   client: Client;
 

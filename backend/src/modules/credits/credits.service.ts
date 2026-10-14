@@ -115,14 +115,14 @@ export class CreditsService {
    * `checkStudy` / el sondeo en segundo plano lo reintentan.
    */
   async study(companyId: string, dto: StudyCreditDto, audit: StudyAudit) {
-    const { nit, signature } = await this.validateStudy(companyId, dto);
+    const { client, nit, signature } = await this.validateStudy(companyId, dto);
     const signedAt = new Date();
 
     const credit = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.save(
         manager.create(Credit, {
           companyId,
-          clientId: dto.clientId,
+          clientId: client?.id ?? null,
           nit,
           // Derivado de la existencia de la firma, no de lo que diga el cliente.
           consentData: true,
@@ -169,7 +169,7 @@ export class CreditsService {
       endpoint: 'POST /api/v1/check/async',
       request: this.saman.buildRequest({ personType: dto.personType, nit }),
       credit: {
-        clientId: client.id,
+        clientId: client?.id ?? null,
         nit,
         personType: dto.personType,
         yearsExperience: dto.yearsExperience,
@@ -180,10 +180,20 @@ export class CreditsService {
     };
   }
 
-  /** Validaciones comunes de `study` y `previewStudy`. */
+  /**
+   * Validaciones comunes de `study` y `previewStudy`. Sin `clientId` el
+   * documento puede no estar registrado: basta con que la confirmación
+   * coincida. Si sí hay un cliente con ese documento, se vincula igual.
+   */
   private async validateStudy(companyId: string, dto: StudyCreditDto) {
-    const client = await this.ensureClientInTenant(dto.clientId, companyId);
-    const nit = normalizeNitWithDv(dto.nit, client.documentNumber ?? '', dto.personType);
+    if (dto.nit !== dto.nitConfirm) {
+      throw new BadRequestException(
+        `La confirmación del ${dto.personType === 'juridica' ? 'NIT' : 'número de identificación'} no coincide`,
+      );
+    }
+    const selected = dto.clientId ? await this.ensureClientInTenant(dto.clientId, companyId) : null;
+    const nit = normalizeNitWithDv(dto.nit, selected ? (selected.documentNumber ?? '') : null, dto.personType);
+    const client = selected ?? (await this.clientsService.findBasicByDocumentInTenant(nit, companyId));
     const signature = decodeSignature(dto.consentSignature);
     return { client, nit, signature };
   }
@@ -373,6 +383,17 @@ export class CreditsService {
     const credit = await this.findOne(id, companyId);
     if (credit.status !== CreditStatus.PRE_APPROVED) {
       throw new BadRequestException('El crédito debe estar pre-aprobado para enviar los documentos a firma');
+    }
+    // Estudiado sin cliente registrado: el pagaré necesita uno, se vincula ahora.
+    if (!credit.clientId) {
+      const client = await this.clientsService.findBasicByDocumentInTenant(credit.nit, companyId);
+      if (!client) {
+        throw new BadRequestException(
+          `Registra el cliente con documento ${credit.nit} antes de enviar los documentos a firma`,
+        );
+      }
+      await this.repo.update({ id, companyId }, { clientId: client.id });
+      credit.client = await this.clientsService.findOne(client.id, companyId);
     }
 
     const documents = await this.dataSource.transaction(async (manager) => {
