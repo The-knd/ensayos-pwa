@@ -7,7 +7,8 @@ import { canCancel, resumePath, statusMeta } from './creditStatus';
 
 interface Credit {
   id: string;
-  clientId: string;
+  clientId: string | null;
+  nit?: string | null;
   approvedLimit: string | null;
   status: string;
   client?: { fullName: string };
@@ -127,7 +128,7 @@ export function CreditsListPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', wordBreak: 'break-word' }}>
-                    {c.client?.fullName || c.clientId}
+                    {c.client?.fullName || c.nit || c.clientId}
                   </div>
                   {algorithmError && (
                     <div style={{ fontSize: 11, fontWeight: 700, color: algorithmError.color, marginTop: 3 }}>

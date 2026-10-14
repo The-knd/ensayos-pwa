@@ -1,0 +1,409 @@
+@startuml esquema-actual
+' Esquema real de la BD (PostgreSQL 16), sacado de information_schema el 2026-10-09.
+' Última migración aplicada: CreditSigningContact1700000026000.
+' Convenciones: PK = clave primaria, FK = clave foránea, UQ = único, * = NOT NULL.
+
+hide circle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor<<enum>> #FFF8E1
+}
+
+' ================= Tenancy / acceso =================
+
+entity companies {
+  * id : uuid <<PK>>
+  --
+  * name : varchar
+  logo_url : varchar
+  * primary_color : varchar = '#0057B8'
+  * auth_strategy : companies_auth_strategy_enum = 'local'
+  * is_active : bool = true
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity profiles {
+  * id : uuid <<PK>>
+  --
+  company_id : uuid <<FK>>  ' NULL = perfil global (super_admin)
+  * name : varchar
+  * is_system_role : bool = false
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity permissions {
+  * id : uuid <<PK>>
+  --
+  * code : varchar <<UQ>>
+  * resource : varchar
+  * action : varchar
+  condition : jsonb
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity profile_permissions {
+  * profile_id : uuid <<PK, FK>>
+  * permission_id : uuid <<PK, FK>>
+}
+
+entity users {
+  * id : uuid <<PK>>
+  --
+  company_id : uuid <<FK>>  ' NULL = superadmin
+  * profile_id : uuid <<FK>>
+  * email : varchar <<UQ>>
+  password_hash : varchar
+  * full_name : varchar
+  * status : users_status_enum = 'active'
+  * permissions_version : int4 = 0
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity devices {
+  * id : uuid <<PK>>
+  --
+  * user_id : uuid <<FK>>
+  * credential_id : varchar <<UQ>>
+  * public_key : text
+  * counter : int4 = 0
+  device_name : varchar
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity refresh_tokens {
+  * id : uuid <<PK>>
+  --
+  * user_id : varchar  ' sin FK
+  * token_hash : varchar <<UQ>>
+  * expires_at : timestamp
+  * revoked : bool = false
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity feature_flags {
+  * id : uuid <<PK>>
+  --
+  * company_id : uuid <<FK>>
+  user_id : uuid  ' sin FK
+  * key : varchar
+  * enabled : bool = false
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+' ================= Módulos =================
+
+entity modules {
+  * id : uuid <<PK>>
+  --
+  company_id : uuid <<FK>>  ' NULL = módulo global; UQ(key) WHERE company_id IS NULL
+  * key : varchar
+  * module : varchar
+  * label : varchar
+  icon : varchar
+  * path : varchar
+  * operations : jsonb = '[]'
+  flag : varchar
+  * enabled : bool = true
+  * created_at : timestamptz
+  * updated_at : timestamptz
+  deleted_at : timestamptz
+}
+
+entity module_assignments {
+  * module_id : uuid <<PK, FK>>
+  * company_id : uuid <<PK, FK>>
+  --
+  * placement : varchar = 'grid'
+  * position : int4 = 0
+  * enabled : bool = true
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity module_variants {
+  * id : uuid <<PK>>
+  --
+  * module_id : uuid <<FK>>
+  * company_id : uuid <<FK>>
+  ' UQ(module_id, company_id)
+  label : varchar
+  icon : varchar
+  path : varchar
+  * config : jsonb = '{}'
+  * enabled_operations : jsonb = '[]'
+  * created_at : timestamptz
+  * updated_at : timestamptz
+  deleted_at : timestamptz
+}
+
+' ================= Clientes =================
+
+entity clients {
+  * id : uuid <<PK>>
+  --
+  company_id : uuid <<FK>>  ' NULL = cliente global (superadmin)
+  * document_number : varchar <<UQ>>
+  document_type : clients_document_type_enum
+  dv : varchar
+  person_type : clients_person_type_enum
+  * full_name : varchar
+  * status : clients_status_enum = 'active'
+  phone : varchar
+  email : varchar
+  commercial_name : varchar
+  first_name : varchar
+  second_name : varchar
+  first_last_name : varchar
+  second_last_name : varchar
+  legal_name : varchar
+  rep_first_name : varchar
+  rep_second_name : varchar
+  rep_first_last_name : varchar
+  rep_second_last_name : varchar
+  economic_activity_code : varchar
+  economic_activity_description : varchar
+  billing_email : varchar
+  treasury_email : varchar
+  establishment_vocation : varchar
+  establishment_size : varchar
+  service_type : varchar
+  public_office : bool
+  public_office_cargo : varchar
+  public_office_start : date
+  public_office_end : date
+  foreign_accounts : bool
+  public_resource_management : bool
+  foreign_trade : bool
+  foreign_trade_ops_per_year : varchar
+  payment_method : varchar
+  payment_method_other : varchar
+  merchandise_description : text
+  capital_registered : varchar
+  funds_origin : varchar
+  jur_public_office : bool
+  jur_public_resource_management : bool
+  jur_foreign_trade : bool
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity client_directions {
+  * id : uuid <<PK>>
+  --
+  * company_id : uuid <<FK>>
+  * client_id : uuid <<FK>>
+  * type : client_directions_type_enum
+  address : varchar
+  department : varchar
+  city : varchar
+  postal_code : varchar
+  phone : varchar
+  contact_first_name : varchar
+  contact_second_name : varchar
+  contact_first_last_name : varchar
+  contact_second_last_name : varchar
+  description : text
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity client_references {
+  * id : uuid <<PK>>
+  --
+  * company_id : uuid <<FK>>
+  * client_id : uuid <<FK>>
+  * sequence : int4
+  entity : varchar
+  address : varchar
+  department : varchar
+  city : varchar
+  phone : varchar
+  credit_limit : varchar
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity client_tax_settings {
+  * id : uuid <<PK>>
+  --
+  * company_id : uuid <<FK>>
+  * client_id : uuid <<FK, UQ>>
+  ' todos bool NOT NULL default false
+  regimen_responsable_iva : bool
+  regimen_simplificado : bool
+  gran_contribuyente : bool
+  autorretenedor : bool
+  iva_19 : bool
+  iva_5 : bool
+  iva_exento_excluido : bool
+  inc : bool
+  ica_sujeto : bool
+  gmf_sujeto : bool
+  timbre_sujeto : bool
+  rtefuente_honorarios : bool
+  rtefuente_servicios : bool
+  rtefuente_compras : bool
+  rtefuente_arrendamiento : bool
+  rtefuente_transporte : bool
+  rtefuente_intereses : bool
+  rtefuente_dividendos : bool
+  reteiva_15 : bool
+  reteiva_50 : bool
+  reteiva_100 : bool
+  reteica : bool
+  retencion_timbre : bool
+  retencion_gmf : bool
+  autorretencion_fuente : bool
+  autorretencion_ica : bool
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+' ================= Créditos =================
+
+entity credits {
+  * id : uuid <<PK>>
+  --
+  * company_id : uuid <<FK>>
+  * client_id : uuid <<FK>>
+  vendor_id : uuid  ' sin FK
+  * status : credits_status_enum = 'draft'
+  application_number : varchar <<UQ>>
+  nit : varchar
+  person_type : credits_person_type_enum
+  * consent_data : bool = false
+  approved_limit : numeric
+  monthly_income : numeric
+  monthly_expenses : numeric
+  assets_value : numeric
+  liabilities_value : numeric
+  foundation_date : date
+  years_experience : int4
+  opportunity_value : int8
+  reliability_score : int4
+  study_answers : jsonb
+  decision_at : timestamp
+  decision_run_id : varchar
+  algorithm_result : jsonb
+  * algorithm_attempts : int4 = 0
+  algorithm_checked_at : timestamptz
+  signing_contact : jsonb
+  signature_date : timestamp
+  disbursement_date : timestamp
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+entity credit_documents {
+  * id : uuid <<PK>>
+  --
+  * company_id : uuid <<FK>>
+  * credit_id : uuid <<FK>>
+  * code : varchar
+  * name : varchar
+  * status : varchar = 'pending'
+  url : varchar
+  signed_at : timestamp
+  content_base64 : text
+  content_mime : varchar
+  content_sha256 : varchar
+  ip : varchar
+  user_agent : text
+  * created_at : timestamp
+  * updated_at : timestamp
+  deleted_at : timestamp
+}
+
+' ================= Enums =================
+
+enum companies_auth_strategy_enum <<enum>> {
+  local
+  passkey
+  microsoft
+}
+enum users_status_enum <<enum>> {
+  active
+  inactive
+  blocked
+}
+enum clients_status_enum <<enum>> {
+  active
+  inactive
+}
+enum clients_document_type_enum <<enum>> {
+  nit
+  cc
+  ce
+  pp
+}
+enum clients_person_type_enum <<enum>> {
+  natural
+  juridica
+}
+enum client_directions_type_enum <<enum>> {
+  principal
+  despacho
+}
+enum credits_status_enum <<enum>> {
+  draft
+  pre_approved
+  rejected
+  cancelled
+  pending_signatures
+  signed
+}
+enum credits_person_type_enum <<enum>> {
+  natural
+  juridica
+}
+
+' ================= Relaciones =================
+
+companies ||--o{ users
+companies |o--o{ profiles
+companies ||--o{ feature_flags
+companies |o--o{ clients
+companies ||--o{ client_directions
+companies ||--o{ client_references
+companies ||--o{ client_tax_settings
+companies ||--o{ credits
+companies ||--o{ credit_documents
+companies |o--o{ modules
+companies ||--o{ module_assignments
+companies ||--o{ module_variants
+
+profiles ||--o{ users
+profiles ||--o{ profile_permissions
+permissions ||--o{ profile_permissions
+users ||--o{ devices
+
+modules ||--o{ module_assignments
+modules ||--o{ module_variants
+
+clients ||--o{ client_directions
+clients ||--o{ client_references
+clients ||--o| client_tax_settings
+clients ||--o{ credits
+credits ||--o{ credit_documents
+
+@enduml

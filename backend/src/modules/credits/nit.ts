@@ -13,10 +13,11 @@ export { calcNitDv } from '../../commons/utils/nit';
  *   Persona natural: número de identificación (cédula) sin DV ni guion. Debe
  *   ser el `document_number` del cliente.
  *
- * Comparar con el documento del cliente elegido además impide radicar un
- * crédito de un cliente con el documento de otro.
+ * Con cliente elegido (`clientDocument`), comparar con su documento impide
+ * radicar un crédito de un cliente con el documento de otro. Sin cliente
+ * (documento no registrado) solo se valida el formato y el DV.
  */
-export function normalizeNitWithDv(input: string, clientDocument: string, personType: string): string {
+export function normalizeNitWithDv(input: string, clientDocument: string | null, personType: string): string {
   const juridica = personType === 'juridica';
   if (!/^\d+$/.test(input)) {
     throw new BadRequestException(
@@ -25,15 +26,19 @@ export function normalizeNitWithDv(input: string, clientDocument: string, person
         : "El número de identificación va sin DV, sin '-' ni otros caracteres",
     );
   }
-  const document = (clientDocument.match(/\d/g) ?? []).join('');
-  if (input !== document) {
-    throw new BadRequestException(
-      `El ${juridica ? 'NIT' : 'número de identificación'} no corresponde al cliente seleccionado`,
-    );
+  if (clientDocument !== null) {
+    const document = (clientDocument.match(/\d/g) ?? []).join('');
+    if (input !== document) {
+      throw new BadRequestException(
+        `El ${juridica ? 'NIT' : 'número de identificación'} no corresponde al cliente seleccionado`,
+      );
+    }
   }
   if (juridica && !isValidFullNit(input)) {
     throw new BadRequestException(
-      `El NIT del cliente no tiene un DV válido (debería terminar en ${calcNitDv(input.slice(0, -1))}); corrígelo en el registro del cliente`,
+      clientDocument !== null
+        ? `El NIT del cliente no tiene un DV válido (debería terminar en ${calcNitDv(input.slice(0, -1))}); corrígelo en el registro del cliente`
+        : `El dígito de verificación no coincide: con ese número, el NIT debería terminar en ${calcNitDv(input.slice(0, -1))}`,
     );
   }
   return input;

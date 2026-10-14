@@ -140,3 +140,8 @@ prisma/dev.db-journal
 *.pem
 *.key
 *.crt
+
+# ===========================================
+# Volcados de la BD (contienen datos sensibles)
+# ===========================================
+bd/dumps/

@@ -68,6 +68,14 @@ export class ClientsService {
     return client;
   }
 
+  /** Como findBasicInTenant, pero por documento (sin '-'); null si no hay cliente visible con él. */
+  findBasicByDocumentInTenant(documentNumber: string, companyId: string) {
+    return this.repo.findOne({
+      where: [...this.visibleTo(companyId).map((w) => ({ documentNumber, ...w }))],
+      select: ['id', 'documentNumber'],
+    });
+  }
+
   async create(companyId: string, dto: CreateClientDto) {
     const { directions, references, ...rest } = dto;
     Object.assign(rest, nitFields(rest.documentType, rest.documentNumber));

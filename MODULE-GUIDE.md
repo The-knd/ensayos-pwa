@@ -4,6 +4,8 @@
 > registrarlo en el sistema de módulos, darle permisos RBAC y distribuirlo entre empresas.
 > El paradigma y la API del sistema de módulos están en [MODULE-SYSTEM.md](MODULE-SYSTEM.md);
 > credenciales y procedimientos de prueba en [TEST-GUIDE.md](TEST-GUIDE.md).
+> Para módulos **de sistema** (sin pantallas, con comportamiento por empresa y lanzables desde un
+> módulo de usuarios) ver el [Anexo B](#anexo-b--módulos-de-sistema).
 
 ---
 
@@ -747,6 +749,309 @@ export function ProveedoresPage() {
 | Con `proveedores.read` | Tile visible (#0); "Listar" devuelve los 2 seed | `200` |
 | Sin `proveedores.create` | Botón "Crear" oculto | `POST /api/proveedores/items` → `403` |
 | Con ambos | Los dos botones | `GET /api/proveedores/context` → `{"permissions":["proveedores.read","proveedores.create"],"featureFlags":{}}` |
+
+---
+
+## Anexo B — Módulos de sistema
+
+Un **módulo de sistema** ejecuta operaciones internas (integración con SAP, sincronizaciones, procesos)
+sin pantallas propias. Para una misma operación, cada empresa puede tener **parámetros y lógica
+distintos**. Lo dispara un **botón de un módulo de usuarios**, protegido con el permiso `read` de ese
+módulo. En los ejemplos: `<sis>` = `sap`, `<op>` = `cliente.crear`, `<mod>` = módulo de usuarios con el botón.
+
+### B.1 Piezas y flujo
+
+```
+[Botón en <mod>] ──POST /api/<mod>/:id/<sis>/:op──▶ Controller de <mod>   @Permissions('<mod>.read')
+                                                        │
+                                                        ▼
+                                             <Sis>Gateway.launch()        única puerta de entrada
+                                 valida: empresa activa · operación activa · <mod> autorizado · input
+                                                        │
+                                                        ▼
+                                  <sis>_jobs (queued) ──▶ <Sis>JobWorker (cada N s, por empresa)
+                                                                  │
+                                        resuelve estrategia por (empresa, operación) + params
+                                                                  ▼
+                                                  Strategy.execute() ──▶ sistema externo
+[Botón consulta estado] ◀── GET /api/<mod>/<sis>/jobs/:jobId ◀── resultado en <sis>_jobs
+```
+
+| Pieza | Responsabilidad |
+| --- | --- |
+| Gateway | Único punto por el que se lanza algo; revalida todo aunque el controller ya lo haya hecho |
+| Estrategias | La lógica de cada operación; puede haber varias implementaciones por operación |
+| Settings | Por empresa: activación, estrategia elegida, parámetros y credenciales |
+| Jobs | Cola, estado, reintentos y auditoría |
+| Worker | Ejecuta los jobs en segundo plano, empresa por empresa |
+| Módulo de usuarios | Solo expone el botón y el estado; no sabe nada del sistema externo |
+
+**Diferencias con un módulo de usuarios (§3–§8):** no tiene fila en `modules` ni en `module_assignments`,
+no registra permisos propios y no tiene entrada en el registro del frontend. No aparece en Home, en
+Configuración → Módulos ni en Perfiles → Permisos. Lo visible es el botón del módulo de usuarios.
+
+### B.2 Crear
+
+```
+backend/src/modules/<sis>/
+├── <sis>.module.ts
+├── <sis>.gateway.ts               # launch() y status(): API pública del módulo
+├── <sis>-settings.service.ts      # lee la configuración de la empresa
+├── <sis>-job.worker.ts            # procesa la cola
+├── connector/<sis>.client.ts      # HTTP: auth, timeout, proxy, clasificación de errores
+├── crypto/credentials.cipher.ts   # cifrado de credenciales
+├── operations/
+│   ├── operation.types.ts         # claves de operación + contrato Strategy
+│   └── cliente-crear/
+│       ├── cliente-crear.input.ts     # DTO de entrada (class-validator)
+│       ├── cliente-crear.params.ts    # DTO de params por empresa
+│       ├── default.strategy.ts
+│       └── <variante>.strategy.ts     # solo si una empresa necesita otra lógica
+├── entities/                      # settings y jobs
+└── admin/<sis>-admin.controller.ts  # configuración, solo superadmin
+```
+
+El módulo no tiene controller de usuario y exporta solo el gateway:
+
+```ts
+@Module({
+  imports: [TypeOrmModule.forFeature([SisCompanySettings, SisOperationSettings, SisJob])],
+  controllers: [SisAdminController],
+  providers: [
+    SisGateway, SisSettingsService, SisJobWorker, SisClient, CredentialsCipher,
+    DefaultClienteCrearStrategy, VarianteClienteCrearStrategy,
+    {
+      provide: SIS_STRATEGIES,
+      useFactory: (...all: SisStrategy[]) => all,
+      inject: [DefaultClienteCrearStrategy, VarianteClienteCrearStrategy],
+    },
+  ],
+  exports: [SisGateway],
+})
+export class SisModule {}
+```
+
+Se importa en `imports` de `backend/src/app.module.ts` (`ScheduleModule.forRoot()` ya está registrado).
+
+### B.3 Comportamiento por empresa (Strategy + configuración)
+
+- **Solo cambian variables** (serie, almacén, lista de precios): una estrategia, distintos `params` por empresa.
+- **Cambia la lógica** (otro mapeo, otro endpoint, pasos extra): otra clase de estrategia, y esa empresa
+  apunta a ella.
+
+```ts
+export type SisOperationKey = 'cliente.crear' | 'pedido.crear' /* ... */;
+
+export interface SisContext {
+  companyId: string;
+  jobId: string;
+  params: Record<string, unknown>; // ya validados contra paramsDto
+  client: SisClient;               // ya autenticado para esa empresa
+}
+
+export interface SisStrategy<I = unknown, O = unknown> {
+  readonly operation: SisOperationKey;
+  readonly key: string;                 // 'default', 'empresa-x', ...
+  readonly inputDto: new () => I;       // valida lo que manda el botón
+  readonly paramsDto: new () => object; // valida la config de la empresa
+  execute(input: I, ctx: SisContext): Promise<O>;
+}
+```
+
+```ts
+private resolve(operation: SisOperationKey, strategyKey: string): SisStrategy {
+  const s = this.strategies.find((x) => x.operation === operation && x.key === strategyKey);
+  if (!s) throw new Error(`Estrategia no registrada: ${operation}/${strategyKey}`);
+  return s;
+}
+```
+
+Reglas:
+
+1. Las estrategias **no leen configuración ni variables de entorno**: todo les llega en `ctx`, así se prueban aisladas.
+2. **Nunca `if (companyId === '...')`** en el código: la diferencia entre empresas está siempre en `strategy` + `params`.
+3. Una estrategia nueva se añade al factory de `SIS_STRATEGIES`; si no, la configuración que la referencie
+   se rechaza al guardarla (B.4).
+
+> `module_variants.config` **no** sirve para esto: viaja al navegador en el bootstrap. Es para adaptar la UI,
+> no para parámetros ni credenciales del servidor.
+
+### B.4 Parametrizar
+
+**a) Global — variables de entorno** validadas con Joi en `backend/src/commons/config/env.validation.ts`.
+Si falta una obligatoria, el backend no arranca; por defecto el módulo queda apagado:
+
+```ts
+SAP_ENABLED: Joi.boolean().default(false),
+SAP_CREDENTIALS_KEY: Joi.string().base64().when('SAP_ENABLED', { is: true, then: Joi.required() }).allow(''),
+SAP_REQUEST_TIMEOUT_MS: Joi.number().integer().min(1000).default(15000),
+SAP_JOB_POLL_INTERVAL_MS: Joi.number().integer().min(0).default(10000), // 0 = worker apagado
+SAP_JOB_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
+SAP_HTTPS_PROXY: Joi.string().uri().allow('').default(''),
+```
+
+**b) Por empresa — tablas propias del módulo:**
+
+| Tabla | Columnas clave |
+| --- | --- |
+| `<sis>_company_settings` | `company_id` (UQ), `enabled`, `environment`, `base_url`, conexión no secreta, `credentials_encrypted`, `updated_by` |
+| `<sis>_operation_settings` | UQ `(company_id, operation)`, `enabled`, `strategy`, `params jsonb`, `launchers text[]` |
+
+**c) Secretos:** cifrados con AES-256-GCM en `credentials_encrypted`, con la clave `SAP_CREDENTIALS_KEY`.
+Solo `SisClient` los descifra, al conectar. Nunca aparecen en respuestas de la API, logs ni `<sis>_jobs`.
+
+**Validación de `params`:** al guardar una configuración de operación se comprueba que la estrategia exista y
+se valida `params` contra su `paramsDto`. Un error de configuración aparece al guardar, no al pulsar el botón.
+
+**Migración** (`<timestamp>-<Sis>Integration.ts`): las tres tablas (settings y jobs), cada una con:
+
+```sql
+ALTER TABLE "<sis>_company_settings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "<sis>_company_settings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation_<sis>_company_settings ON "<sis>_company_settings"
+  USING (company_id = current_setting('app.current_company_id', true)::uuid)
+  WITH CHECK (company_id = current_setting('app.current_company_id', true)::uuid);
+```
+
+### B.5 Proteger
+
+- **Superficie HTTP.** Para usuarios, ninguna desde el módulo de sistema: solo los dos endpoints del módulo
+  de usuarios (B.8). La administración va con `@UseGuards(JwtAuthGuard, SuperAdminGuard)`.
+- **Nunca `PermissionsGuard` sin `@Permissions`:** deja pasar a cualquier usuario autenticado. No hay guard global.
+- **El gateway revalida en cada `launch()`:**
+  1. Hay empresa activa (`companyId` no es null) → si no, `400` "Selecciona una empresa".
+  2. `SAP_ENABLED` y `company_settings.enabled` activos.
+  3. `operation_settings.enabled` activo y `launcher ∈ launchers` → si no, `403`/`409`.
+  4. El input pasa el `inputDto` de la estrategia configurada.
+  5. El `targetId` pertenece a la empresa (consulta filtrada por `companyId`).
+- **Multi-tenant.** Fuera de una petición HTTP (worker), toda lectura y escritura va en `inTenant(companyId)`
+  con `set_config('app.current_company_id', $1, true)` — el `true` es obligatorio; con `false` la empresa queda
+  en la conexión del pool. Filtra además por `companyId` en cada query. Para registros globales usa `IsNull()`:
+  **nunca `where: { companyId: null }`**, que TypeORM 0.3 ignora (devuelve filas de todas las empresas).
+- **Red.** El dominio externo va en `egress-proxy/squid.conf` (única salida a Internet del backend). Cada
+  llamada lleva timeout y se hace **fuera** de las transacciones de BD.
+- **Duplicados.** Clave de idempotencia (`X-Idempotency-Key`, que `httpClient` ya envía en mutaciones) y un
+  índice único parcial sobre los jobs activos:
+
+  ```sql
+  CREATE UNIQUE INDEX "UQ_<sis>_jobs_active" ON "<sis>_jobs" (company_id, operation, target_id)
+    WHERE status IN ('queued', 'running');
+  ```
+- **Auditoría.** Cada job guarda quién lo lanzó, desde qué módulo, la estrategia, `request_hash`, resultado y
+  error. No guardes el payload en claro si contiene datos sensibles.
+
+### B.6 Activar por empresa
+
+Pura configuración, sin código ni despliegue (endpoints de superadmin; reciben `companyId` en la ruta y
+escriben dentro de `inTenant(companyId)`):
+
+| Paso | Endpoint | Detalle |
+| --- | --- | --- |
+| Conexión | `PUT /api/system/<sis>/companies/:companyId` | `enabled`, `environment`, `base_url`, credenciales. Credenciales solo escritura: el `GET` devuelve `hasCredentials: true` |
+| Prueba | `POST /api/system/<sis>/companies/:companyId/test` | Llamada mínima; devuelve ok o el error clasificado |
+| Operación | `PUT /api/system/<sis>/companies/:companyId/operations/:operation` | `{ "enabled": true, "strategy": "default", "params": {…}, "launchers": ["<mod>"] }` |
+| Desactivar | Los mismos con `enabled: false` | El botón desaparece y la API rechaza lanzamientos; los jobs en curso terminan |
+
+### B.7 Ejecutar: jobs y worker
+
+Tabla `<sis>_jobs`: `id`, `company_id`, `operation`, `strategy`, `launcher_module`, `launched_by`, `target_id`,
+`idempotency_key`, `status` (`queued`/`running`/`done`/`failed`), `attempts`, `next_attempt_at`, `result jsonb`,
+`error jsonb`, `request_hash` y fechas.
+
+El worker copia el patrón de `backend/src/modules/credits/credit-study.poller.ts`:
+
+- `SchedulerRegistry.addInterval` con `SAP_JOB_POLL_INTERVAL_MS` (0 = no arranca).
+- Flag `running` para que una vuelta lenta no se solape con la siguiente.
+- Recorre `SELECT id FROM companies WHERE is_active` y, por empresa, un lote de jobs `queued` con
+  `next_attempt_at <= now()`.
+- Reserva optimista, para que dos instancias del backend nunca ejecuten el mismo job:
+
+  ```sql
+  UPDATE <sis>_jobs SET status = 'running', started_at = now()
+  WHERE id = $1 AND status = 'queued' RETURNING id
+  ```
+- Por job: cargar la configuración de la empresa → resolver la estrategia → `execute()` fuera de transacción →
+  guardar el resultado dentro de `inTenant`.
+
+| Tipo de error | Causa | Qué pasa |
+| --- | --- | --- |
+| `transient` | Red, timeout, 5xx, 429 | Reintento con backoff (`next_attempt_at`) hasta `SAP_JOB_MAX_ATTEMPTS` |
+| `auth` | 401/403 | Pausa **solo esa empresa** y avisa en el log |
+| `definitive` | 4xx de validación | `failed` sin reintento |
+
+### B.8 Vincular con el módulo de usuarios
+
+**Backend de `<mod>`:**
+
+```ts
+@Controller('<mod>')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class ModController {
+  constructor(private sis: SisGateway, private rbac: RbacService) {}
+
+  @Get('context')
+  async context(@CurrentUser() user, @CurrentTenant() companyId: string) {
+    return {
+      permissions: await this.rbac.getPermissionsByPrefix(user.sub, companyId, '<mod>'),
+      sisOperations: await this.sis.enabledOperationsFor(companyId, '<mod>'), // ['cliente.crear']
+    };
+  }
+
+  @Post(':id/<sis>/:operation')
+  @Permissions('<mod>.read')
+  launch(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('operation') operation: string,
+    @CurrentTenant() companyId: string,
+    @CurrentUser() user,
+    @Body() input: unknown,
+    @Headers('x-idempotency-key') idempotencyKey: string,
+  ) {
+    return this.sis.launch({ companyId, userId: user.sub, launcher: '<mod>', operation, targetId: id, input, idempotencyKey });
+    // → { jobId, status: 'queued' }
+  }
+
+  @Get('<sis>/jobs/:jobId')
+  @Permissions('<mod>.read')
+  status(@Param('jobId', new ParseUUIDPipe()) jobId: string, @CurrentTenant() companyId: string) {
+    return this.sis.status(companyId, jobId, '<mod>'); // solo jobs lanzados desde <mod>
+  }
+}
+```
+
+**Frontend:** componente reutilizable `frontend/src/shared/components/SisLaunchButton.tsx`:
+
+```tsx
+<SisLaunchButton module="<mod>" operation="cliente.crear" targetId={cliente.id} label="Enviar a SAP" />
+```
+
+- Se muestra solo si `hasPerm('<mod>.read')` y la operación está en `sisOperations` del contexto del módulo.
+- Al pulsar: `POST` con clave de idempotencia; queda deshabilitado mientras el job esté activo.
+- Consulta el estado cada pocos segundos hasta `done`/`failed`, con límite de tiempo; si se agota, muestra
+  "Sigue en proceso".
+- Traduce el error clasificado a un texto legible y respeta el banner de conectividad.
+
+Para que otro módulo lance la misma operación: añade los dos endpoints y el botón, y el superadmin incluye ese
+módulo en `launchers`. Las estrategias y la configuración no se tocan.
+
+### B.9 Checklist
+
+| Fase | Comprobación |
+| --- | --- |
+| Crear | Módulo importado en `app.module.ts`, sin fila en `modules` ni permisos propios |
+| Crear | Migración con settings y jobs, RLS `ENABLE` + `FORCE` y políticas |
+| Parametrizar | Variables en Joi; módulo y worker apagados por defecto |
+| Parametrizar | `params` validados por estrategia al guardar; credenciales cifradas y nunca devueltas |
+| Proteger | Administración solo con `JwtAuthGuard` + `SuperAdminGuard` |
+| Proteger | El gateway revalida empresa, operación, launcher, input y pertenencia del target |
+| Proteger | Worker con `inTenant` y filtro explícito por `companyId` |
+| Proteger | Dominio en el egress-proxy; timeout por llamada; sin llamadas dentro de transacciones |
+| Vincular | `launch` y `status` en `<mod>` con `@Permissions('<mod>.read')`; `sisOperations` en su `context` |
+| Vincular | `SisLaunchButton` condicionado a permiso y operación activa |
+| Probar | Sin `<mod>.read` → `403`; módulo fuera de `launchers` → `403`; operación desactivada → sin botón y `409` |
+| Probar | Empresa A no ve ni lanza jobs de la B; usuario de la app sin GUC → 0 filas |
+| Probar | Doble clic → un solo job; sistema caído → reintento; credenciales malas → pausa solo esa empresa |
+| Probar | La contraseña no aparece en `<sis>_jobs` ni en los logs |
 
 ---
 
