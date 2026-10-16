@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
@@ -106,17 +106,31 @@ export class CreditsService {
   }
 
   /**
-   * Paso 1: registra la solicitud como borrador y la envía al algoritmo.
+   * Paso 1: envía la solicitud al algoritmo y, si el envío funciona, la
+   * registra como borrador.
    *
-   * El crédito y la firma del consentimiento se guardan en la misma
-   * transacción: una autorización de datos sin el crédito al que pertenece (o
-   * al revés) es un registro inconsistente. El envío al algoritmo va después y
-   * fuera de la transacción: si falla, el borrador queda guardado sin tarea y
-   * `checkStudy` / el sondeo en segundo plano lo reintentan.
+   * El envío va primero y fuera de la transacción: si no es posible enviar a
+   * estudio, no se crea nada (ni el crédito ni la firma del consentimiento) y
+   * se responde 502 para que el front regrese al home de créditos con el aviso.
+   * El crédito y la firma se guardan en la misma transacción: una autorización
+   * de datos sin el crédito al que pertenece (o al revés) es un registro
+   * inconsistente.
    */
   async study(companyId: string, dto: StudyCreditDto, audit: StudyAudit) {
     const { client, nit, signature } = await this.validateStudy(companyId, dto);
     const signedAt = new Date();
+    const now = new Date();
+
+    let taskId: string;
+    try {
+      taskId = await this.saman.requestStudy({ personType: dto.personType, nit });
+    } catch (err) {
+      const error = err instanceof SamanError ? err : new SamanError('transient', (err as Error).message);
+      const log = `Saman (${error.type}) al crear la tarea para el nit ${nit} (sin borrador): ${error.message}`;
+      if (error.type === 'auth') this.logger.error(log);
+      else this.logger.warn(log);
+      throw new BadGatewayException('No fue posible enviar a estudio, intente más tarde');
+    }
 
     const credit = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.save(
@@ -131,6 +145,11 @@ export class CreditsService {
           opportunityValue: dto.opportunityValue,
           reliabilityScore: dto.reliabilityScore,
           status: CreditStatus.DRAFT,
+          // Tarea ya creada en Saman: el resto del flujo solo consulta su veredicto.
+          decisionRunId: taskId,
+          algorithmResult: { sentAt: now.toISOString() },
+          algorithmAttempts: 1,
+          algorithmCheckedAt: now,
         }),
       );
 
@@ -153,8 +172,7 @@ export class CreditsService {
       return saved;
     });
 
-    const outcome = await this.draftOutcome(credit);
-    if (outcome) await this.applyDraftOutcome(this.repo.manager, credit, outcome);
+    this.logger.log(`Saman: tarea ${taskId} creada para el crédito ${credit.id} (nit ${nit})`);
     return this.findOne(credit.id, companyId);
   }
 

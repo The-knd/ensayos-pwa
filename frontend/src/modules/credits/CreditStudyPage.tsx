@@ -7,6 +7,7 @@ import { Modal } from '../../shared/components/Modal';
 import { ScaleInput } from '../../shared/components/ScaleInput';
 import { SignatureFullscreen, SignaturePad, useIsPhone } from '../../shared/components/SignaturePad';
 import { httpClient } from '../../shared/api/httpClient';
+import { getApiError } from '../../shared/api/apiError';
 import { useTheme } from '../../shared/theme/ThemeContext';
 import { documentForNewClient, idLabel, sanitizeNitInput, validateNit } from '../../shared/utils/validators';
 import { CONSENT_UI_MODE } from './consentUiMode';
@@ -163,6 +164,23 @@ export function CreditStudyPage() {
     consentSignature: signatureData,
   });
 
+  /**
+   * Fallo al hablar con el estudio: un 4xx (validación) se corrige en el
+   * formulario; un 5xx o una caída de red no dependen del asesor, así que se
+   * vuelve al home con el aviso de reintento (CreditsHomePage). Devuelve `true`
+   * si se navegó, para no dejar el botón en "enviando" sobre una pantalla que
+   * se desmonta. Aplica igual a la vista previa (1b) y al envío (1c).
+   */
+  const handleStudyError = (err: unknown, fallback: string): boolean => {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status && status >= 400 && status < 500) {
+      setError(getApiError(err)?.message || fallback);
+      return false;
+    }
+    navigate('/credits', { replace: true, state: { estudioError: true } });
+    return true;
+  };
+
   /** 1b → 1c: valida en el front, pide al backend la petición que se enviará a Saman y la muestra. */
   const goToConfirmation = async () => {
     setError('');
@@ -183,14 +201,13 @@ export function CreditStudyPage() {
       const res = await httpClient.post('/credits/study/preview', studyPayload());
       setPreview(res.data);
       setSearchParams({ [SUB_STEP_PARAM]: CONFIRMATION });
-    } catch (err: any) {
-      setError(err?.response?.data?.message?.message || 'No se pudo validar la solicitud');
-    } finally {
       setSubmitting(false);
+    } catch (err) {
+      if (!handleStudyError(err, 'No se pudo validar la solicitud')) setSubmitting(false);
     }
   };
 
-  /** 1c: crea el borrador y lo envía a Saman. */
+  /** 1c: lo envía a Saman; si el envío falla no hay borrador y se vuelve al home. */
   const handleSubmit = async () => {
     setError('');
     setSubmitting(true);
@@ -200,9 +217,8 @@ export function CreditStudyPage() {
       // resultado consulta su veredicto. replace: volver atrás no debe reabrir
       // un formulario ya enviado.
       navigate(`/credits/result/${res.data.id}`, { replace: true });
-    } catch (err: any) {
-      setError(err?.response?.data?.message?.message || 'No se pudo enviar la solicitud');
-      setSubmitting(false);
+    } catch (err) {
+      if (!handleStudyError(err, 'No se pudo enviar la solicitud')) setSubmitting(false);
     }
   };
 

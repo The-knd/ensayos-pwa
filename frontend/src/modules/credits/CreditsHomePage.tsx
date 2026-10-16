@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Modal } from '../../shared/components/Modal';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
 
 const STEPS = [
@@ -26,7 +28,19 @@ const STEPS = [
 
 export function CreditsHomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   useBackTarget('/home');
+
+  // El envío a estudio falló: el estudio no persistió nada y el home avisa.
+  const [studyError, setStudyError] = useState(false);
+  useEffect(() => {
+    if ((location.state as { estudioError?: boolean } | null)?.estudioError) setStudyError(true);
+  }, [location.state]);
+
+  const dismissStudyError = () => {
+    setStudyError(false);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  };
 
   return (
     <div className="s2">
@@ -74,6 +88,17 @@ export function CreditsHomePage() {
           </button>
         </div>
       </div>
+
+      <Modal open={studyError} onClose={dismissStudyError}>
+        <div className="sectitle">Estudio de crédito</div>
+        <p style={{ fontSize: 14, margin: '0 2px 4px' }}>No fue posible enviar a estudio, intente mas tarde</p>
+        <div className="action-bar stacked" style={{ position: 'static', boxShadow: 'none', padding: 0 }}>
+          <button className="btn btn-primary" onClick={dismissStudyError}>
+            Entendido
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
