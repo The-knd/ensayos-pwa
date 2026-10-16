@@ -7,9 +7,10 @@ import { ClientTaxSettings } from './entities/client-tax.entity';
 import { ClientsService } from './clients.service';
 import { ClientsController } from './clients.controller';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
+import { ClientSyncModule } from './sync/client-sync.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Client, ClientDirection, ClientReference, ClientTaxSettings]), FeatureFlagsModule],
+  imports: [TypeOrmModule.forFeature([Client, ClientDirection, ClientReference, ClientTaxSettings]), FeatureFlagsModule, ClientSyncModule],
   controllers: [ClientsController],
   providers: [ClientsService],
   exports: [ClientsService],

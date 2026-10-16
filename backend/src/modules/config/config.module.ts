@@ -5,9 +5,10 @@ import { ConfigService as AppConfigService } from './config.service';
 import { ConfigController } from './config.controller';
 import { UploadsController } from './uploads.controller';
 import { ModulePlacementsModule } from '../placements/module-placements.module';
+import { ConnectionsModule } from './connections/connections.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company]), ModulePlacementsModule],
+  imports: [TypeOrmModule.forFeature([Company]), ModulePlacementsModule, ConnectionsModule],
   controllers: [ConfigController, UploadsController],
   providers: [AppConfigService],
   exports: [AppConfigService],
