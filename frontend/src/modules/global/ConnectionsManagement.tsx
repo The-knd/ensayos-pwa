@@ -2,16 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { httpClient } from '../../shared/api/httpClient';
 import { Modal } from '../../shared/components/Modal';
 import { ConnectionForm } from './ConnectionForm';
+import { ConnectionTemplateForm } from './ConnectionTemplateForm';
 import {
   Connection,
   ConnectionInput,
   connectionsApi,
   ConnectionsMeta,
+  ConnectionTemplate,
+  ConnectionTemplateInput,
   errorMessage,
   IntegrationEnvironment,
   IntegrationJob,
+  ModuleOption,
   SyncMeta,
   syncApi,
+  templatesApi,
   TEST_STATUS_TEXT,
 } from './connections.api';
 
@@ -20,6 +25,8 @@ interface CompanyOption {
   name: string;
 }
 
+type Tab = 'companies' | 'templates';
+
 const ENV_LABEL: Record<IntegrationEnvironment, string> = { production: 'Producción', test: 'Pruebas' };
 const JOB_STATUS: Record<IntegrationJob['status'], { label: string; bg: string; fg: string }> = {
   queued: { label: 'En cola', bg: '#fff4e5', fg: '#a15c00' },
@@ -27,7 +34,6 @@ const JOB_STATUS: Record<IntegrationJob['status'], { label: string; bg: string; 
   done: { label: 'Terminado', bg: 'var(--green-soft)', fg: 'var(--green-deep)' },
   failed: { label: 'Falló', bg: '#fdecea', fg: '#b00020' },
 };
-/** Seguimiento de "Sincronizar ahora": cada 3 s, hasta 3 min; luego queda en el historial. */
 const POLL_MS = 3_000;
 const POLL_MAX_MS = 3 * 60_000;
 const EXPIRY_WARN_DAYS = 15;
@@ -37,44 +43,66 @@ const pill = (bg: string, fg: string) => ({ fontSize: 11, fontWeight: 700, paddi
 const smallBtn = { width: 'auto', height: 38, padding: '0 14px', fontSize: 12.5 };
 
 /**
- * Conexiones por empresa (SAP Business One). Solo superadmin; backend:
- * /api/connections (conexiones) y /api/clients/sync (sincronización). Las
- * credenciales se escriben aquí pero nunca se leen: el servidor solo informa si
- * hay credenciales y cuándo se guardaron.
+ * Conexiones con sistemas externos, solo superadmin. Dos pestañas:
+ *   - Conexiones Empresas: tarjetas por empresa (acordeón, una abierta a la vez)
+ *     con sus conexiones; alta guiada por plantilla; activar/desactivar.
+ *   - Plantillas para sistemas: catálogo de sistemas y plantillas que definen
+ *     qué campos y secretos tiene cada conexión.
+ * Backend: /api/connections y /api/clients/sync. Las credenciales nunca se leen.
  */
 export function ConnectionsManagement() {
+  const [tab, setTab] = useState<Tab>('companies');
   const [meta, setMeta] = useState<ConnectionsMeta | null>(null);
   const [syncMeta, setSyncMeta] = useState<SyncMeta | null>(null);
+  const [templates, setTemplates] = useState<ConnectionTemplate[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [companyId, setCompanyId] = useState('');
+  const [modules, setModules] = useState<ModuleOption[]>([]);
+  const [openCompany, setOpenCompany] = useState('');
   const [connections, setConnections] = useState<Connection[]>([]);
   const [jobs, setJobs] = useState<IntegrationJob[]>([]);
-  const [editing, setEditing] = useState<{ env: IntegrationEnvironment; existing: Connection | null } | null>(null);
+  const [editingConn, setEditingConn] = useState<{ existing: Connection | null } | null>(null);
+  const [editingTpl, setEditingTpl] = useState<{ existing: ConnectionTemplate | null } | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [formError, setFormError] = useState('');
   const [notice, setNotice] = useState('');
+  const [formError, setFormError] = useState('');
+  const [tplError, setTplError] = useState('');
   const [openJob, setOpenJob] = useState<IntegrationJob | null>(null);
   const pollRef = useRef<number | null>(null);
+
+  const reloadTemplates = useCallback(() => templatesApi.list().then(setTemplates).catch((err) => setError(errorMessage(err, 'No se pudieron cargar las plantillas'))), []);
 
   useEffect(() => {
     connectionsApi.meta().then(setMeta).catch((err) => setError(errorMessage(err, 'No se pudo cargar la configuración de conexiones')));
     syncApi.meta().then(setSyncMeta).catch(() => undefined);
+    reloadTemplates();
     httpClient
       .get('/config/companies')
       .then((res) => {
         const list: CompanyOption[] = (res.data || []).map((c: CompanyOption) => ({ id: c.id, name: c.name }));
         setCompanies(list);
-        if (list[0]) setCompanyId(list[0].id);
       })
       .catch(() => setError('No se pudieron cargar las empresas'));
+    httpClient
+      .get('/config/modules')
+      .then((res) => {
+        const seen = new Map<string, string>();
+        for (const m of res.data || []) if (m?.module && !seen.has(m.module)) seen.set(m.module, m.label ?? m.module);
+        setModules([...seen.entries()].map(([module, label]) => ({ module, label })));
+      })
+      .catch(() => undefined);
     return () => {
       if (pollRef.current) window.clearTimeout(pollRef.current);
     };
-  }, []);
+  }, [reloadTemplates]);
 
-  const load = useCallback(async () => {
-    if (!companyId) return;
+  const loadCompany = useCallback(async (companyId: string) => {
+    if (!companyId) {
+      setConnections([]);
+      setJobs([]);
+      return;
+    }
+    setError('');
     try {
       const [conns, recent] = await Promise.all([connectionsApi.list(companyId), syncApi.jobs(companyId)]);
       setConnections(conns);
@@ -82,20 +110,17 @@ export function ConnectionsManagement() {
     } catch (err) {
       setError(errorMessage(err, 'No se pudieron cargar las conexiones'));
     }
-  }, [companyId]);
+  }, []);
 
   useEffect(() => {
-    setConnections([]);
-    setJobs([]);
+    loadCompany(openCompany);
+  }, [openCompany, loadCompany]);
+
+  const toggleCompany = (id: string) => {
     setNotice('');
     setError('');
-    load();
-  }, [load]);
-
-  // Sistema sobre el que opera la pantalla: el primero con adaptador registrado.
-  const system = meta?.systems[0] ?? '';
-  const strategies = syncApi.keysFor(syncMeta, system);
-  const byEnv = (env: IntegrationEnvironment) => connections.find((c) => c.system === system && c.environment === env) ?? null;
+    setOpenCompany((prev) => (prev === id ? '' : id));
+  };
 
   const run = async (key: string, work: () => Promise<void>) => {
     setBusy(key);
@@ -110,15 +135,17 @@ export function ConnectionsManagement() {
     }
   };
 
-  const save = async (input: ConnectionInput) => {
-    if (!editing) return;
+  const saveConnection = async (input: ConnectionInput) => {
+    if (!editingConn || !openCompany) return;
     setBusy('save');
     setFormError('');
     try {
-      const saved = await connectionsApi.save(companyId, system, editing.env, input);
-      setEditing(null);
+      const saved = editingConn.existing
+        ? await connectionsApi.update(openCompany, editingConn.existing.id, input)
+        : await connectionsApi.create(openCompany, input);
+      setEditingConn(null);
       setNotice(saved.enabled ? 'Conexión guardada.' : 'Conexión guardada. Pruébala y luego actívala.');
-      await load();
+      await loadCompany(openCompany);
     } catch (err) {
       setFormError(errorMessage(err, 'No se pudo guardar la conexión'));
     } finally {
@@ -127,33 +154,58 @@ export function ConnectionsManagement() {
   };
 
   const test = (c: Connection) =>
-    run(`test:${c.environment}`, async () => {
-      const r = await connectionsApi.test(companyId, system, c.environment);
+    run(`test:${c.id}`, async () => {
+      const r = await connectionsApi.test(openCompany, c.id);
       if (r.status === 'ok') setNotice(TEST_STATUS_TEXT.ok);
       else setError(`${TEST_STATUS_TEXT[r.status]}: ${r.message}`);
-      await load();
+      await loadCompany(openCompany);
     });
 
   const setEnabled = (c: Connection, enabled: boolean) =>
-    run(`toggle:${c.environment}`, async () => {
-      await connectionsApi.save(companyId, system, c.environment, { authType: c.authType, baseUrl: c.baseUrl, settings: c.settings, enabled });
+    run(`toggle:${c.id}`, async () => {
+      await connectionsApi.update(openCompany, c.id, { enabled });
       setNotice(enabled ? 'Conexión activada.' : 'Conexión desactivada: no se lanzarán nuevas sincronizaciones.');
-      await load();
+      await loadCompany(openCompany);
     });
 
   const remove = (c: Connection) => {
-    if (!window.confirm(`¿Eliminar la conexión de ${ENV_LABEL[c.environment].toLowerCase()}? Se borran sus credenciales. Los clientes ya sincronizados se conservan.`)) return;
-    run(`remove:${c.environment}`, async () => {
-      await connectionsApi.remove(companyId, system, c.environment);
+    if (!window.confirm(`¿Eliminar la conexión "${c.label}"? Se borran sus credenciales. Los datos ya sincronizados se conservan.`)) return;
+    run(`remove:${c.id}`, async () => {
+      await connectionsApi.remove(openCompany, c.id);
       setNotice('Conexión eliminada.');
-      await load();
+      await loadCompany(openCompany);
+    });
+  };
+
+  const saveTemplate = async (input: ConnectionTemplateInput) => {
+    setBusy('save-tpl');
+    setTplError('');
+    try {
+      if (editingTpl?.existing) await templatesApi.update(editingTpl.existing.id, input);
+      else await templatesApi.create(input);
+      setEditingTpl(null);
+      await reloadTemplates();
+      setNotice('Plantilla guardada.');
+    } catch (err) {
+      setTplError(errorMessage(err, 'No se pudo guardar la plantilla'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const removeTemplate = (t: ConnectionTemplate) => {
+    if (!window.confirm(`¿Eliminar la plantilla "${t.label}"? Las conexiones ya creadas no se modifican.`)) return;
+    run(`tpl:${t.id}`, async () => {
+      await templatesApi.remove(t.id);
+      await reloadTemplates();
+      setNotice('Plantilla eliminada.');
     });
   };
 
   const follow = (jobId: string, startedAt = Date.now()) => {
     pollRef.current = window.setTimeout(async () => {
       try {
-        const job = await syncApi.job(companyId, jobId);
+        const job = await syncApi.job(openCompany, jobId);
         setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
         if (job.status === 'done' || job.status === 'failed') {
           setNotice(job.status === 'done' ? `Sincronización terminada: ${summary(job)}` : '');
@@ -163,7 +215,6 @@ export function ConnectionsManagement() {
         if (Date.now() - startedAt < POLL_MAX_MS) follow(jobId, startedAt);
         else setNotice('Sigue en proceso; consulta el historial más tarde.');
       } catch {
-        // Un fallo puntual de red no corta el seguimiento.
         if (Date.now() - startedAt < POLL_MAX_MS) follow(jobId, startedAt);
       }
     }, POLL_MS);
@@ -171,181 +222,112 @@ export function ConnectionsManagement() {
 
   const syncNow = () =>
     run('sync', async () => {
-      const r = await syncApi.syncClients(companyId);
-      if (!r.jobId) {
-        setError('No se pudo lanzar la sincronización');
-        return;
-      }
+      const r = await syncApi.syncClients(openCompany);
+      if (!r.jobId) return setError('No se pudo lanzar la sincronización');
       setNotice('Sincronización en cola…');
-      await load();
+      await loadCompany(openCompany);
       if (pollRef.current) window.clearTimeout(pollRef.current);
       follow(r.jobId);
     });
 
-  const production = byEnv('production');
+  const systemLabel = (key: string) => meta?.systems.find((s) => s.key === key)?.label ?? key;
+  const templateLabel = (templateId: string | null, system: string) =>
+    templates.find((t) => t.id === templateId)?.label ?? templates.find((t) => t.systemKey === system)?.label ?? system;
+
   const activeJob = jobs.find((j) => j.status === 'queued' || j.status === 'running');
+  const hasSyncableConnection = connections.some(
+    (c) => c.environment === 'production' && c.enabled && syncApi.keysFor(syncMeta, c.system).length > 0,
+  );
 
   return (
     <div>
-      <div className="note" style={{ marginBottom: 14 }}>
-        <p>
-          Conexión de cada empresa con <strong>SAP Business One</strong> para sincronizar sus clientes. Las credenciales se guardan cifradas y no
-          se vuelven a mostrar.
-        </p>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <button className={tab === 'companies' ? 'btn btn-primary' : 'btn btn-ghost'} style={smallBtn} onClick={() => setTab('companies')}>
+          Conexiones Empresas
+        </button>
+        <button className={tab === 'templates' ? 'btn btn-primary' : 'btn btn-ghost'} style={smallBtn} onClick={() => setTab('templates')}>
+          Plantillas para sistemas
+        </button>
       </div>
 
       {meta && !meta.enabled && (
         <div className="info-card" style={{ padding: 14, marginBottom: 12, borderLeft: '4px solid #a15c00', fontSize: 12.5 }}>
-          Las integraciones están deshabilitadas en este servidor (<code>INTEGRATIONS_ENABLED</code>). Puedes consultar las conexiones, pero no
-          guardarlas, probarlas ni sincronizar.
+          Las integraciones están deshabilitadas en este servidor (<code>INTEGRATIONS_ENABLED</code>). Puedes consultar, pero no guardar ni probar.
         </div>
       )}
-
-      <div className="field">
-        <label>Empresa</label>
-        <div className="sel">
-          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
       {error && <p style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</p>}
       {notice && <p style={{ color: 'var(--green-deep)', fontSize: 12, marginBottom: 8 }}>{notice}</p>}
 
-      {(['production', 'test'] as IntegrationEnvironment[]).map((env) => {
-        const c = byEnv(env);
-        if (!c) {
-          return (
-            <div key={env} className="info-card" style={{ padding: '14px 16px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              <div>
-                <strong style={{ fontSize: 14 }}>SAP · {ENV_LABEL[env]}</strong>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>Sin configurar</div>
-              </div>
-              <button
-                className="btn btn-primary"
-                style={smallBtn}
-                disabled={!meta?.enabled || !companyId || !system}
-                onClick={() => {
-                  setFormError('');
-                  setEditing({ env, existing: null });
-                }}
-              >
-                Configurar
-              </button>
-            </div>
-          );
-        }
-        const expiresInDays = c.expiresAt ? Math.ceil((new Date(c.expiresAt).getTime() - Date.now()) / 86_400_000) : null;
-        const tested = c.lastTestStatus === 'ok';
-        return (
-          <div key={env} className="info-card" style={{ padding: '14px 16px', marginBottom: 12, opacity: c.enabled ? 1 : 0.85 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <strong style={{ fontSize: 14 }}>SAP · {ENV_LABEL[env]}</strong>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2, wordBreak: 'break-all' }}>
-                  {c.baseUrl} · {String(c.settings.companyDb ?? '')}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>
-                  Credenciales: {c.hasCredentials ? `guardadas el ${fmt(c.credentialsUpdatedAt)}` : 'sin cargar'} · Última prueba:{' '}
-                  {c.lastTestStatus ? `${TEST_STATUS_TEXT[c.lastTestStatus]} (${fmt(c.lastTestAt)})` : 'pendiente'}
-                  {env === 'production' && ` · ${c.settings.schedule?.everyMinutes ? `cada ${c.settings.schedule.everyMinutes} min` : 'solo manual'}`}
-                </div>
-                {expiresInDays !== null && expiresInDays <= EXPIRY_WARN_DAYS && (
-                  <div style={{ fontSize: 11.5, color: '#b00020', marginTop: 4, fontWeight: 600 }}>
-                    {expiresInDays <= 0 ? 'La credencial está vencida' : `La credencial vence en ${expiresInDays} días`}
-                  </div>
-                )}
-              </div>
-              <span style={c.enabled ? pill('var(--green-soft)', 'var(--green-deep)') : pill('#f1f3f5', 'var(--muted)')}>
-                {c.enabled ? 'Activa' : 'Inactiva'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost" style={smallBtn} disabled={!!busy || !meta?.enabled} onClick={() => test(c)}>
-                {busy === `test:${env}` ? 'Probando…' : 'Probar conexión'}
-              </button>
-              <button
-                className="btn btn-ghost"
-                style={smallBtn}
-                disabled={!!busy || !meta?.enabled}
-                onClick={() => {
-                  setFormError('');
-                  setEditing({ env, existing: c });
-                }}
-              >
-                Editar
-              </button>
-              <button
-                className="btn btn-ghost"
-                style={{ ...smallBtn, color: c.enabled ? '#b00020' : 'var(--green-deep)' }}
-                disabled={!!busy || !meta?.enabled || (!c.enabled && !tested)}
-                title={!c.enabled && !tested ? 'Prueba la conexión antes de activarla' : undefined}
-                onClick={() => setEnabled(c, !c.enabled)}
-              >
-                {c.enabled ? 'Desactivar' : 'Activar'}
-              </button>
-              <button className="btn btn-ghost" style={{ ...smallBtn, color: '#b00020' }} disabled={!!busy} onClick={() => remove(c)}>
-                Eliminar
-              </button>
-            </div>
-          </div>
-        );
-      })}
+      {tab === 'companies' ? (
+        <CompaniesTab
+          companies={companies}
+          openCompany={openCompany}
+          onToggle={toggleCompany}
+          connections={connections}
+          templates={templates}
+          systemLabel={systemLabel}
+          templateLabel={templateLabel}
+          meta={meta}
+          busy={busy}
+          onTest={test}
+          onEdit={(c) => {
+            setFormError('');
+            setEditingConn({ existing: c });
+          }}
+          onToggleEnabled={setEnabled}
+          onRemove={remove}
+          onAdd={() => {
+            setFormError('');
+            setEditingConn({ existing: null });
+          }}
+          jobs={jobs}
+          activeJob={activeJob}
+          hasSyncableConnection={hasSyncableConnection}
+          onSync={syncNow}
+          onOpenJob={setOpenJob}
+        />
+      ) : (
+        <TemplatesTab
+          meta={meta}
+          templates={templates}
+          busy={busy}
+          onNew={() => {
+            setTplError('');
+            setEditingTpl({ existing: null });
+          }}
+          onEdit={(t) => {
+            setTplError('');
+            setEditingTpl({ existing: t });
+          }}
+          onRemove={removeTemplate}
+        />
+      )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '18px 0 8px', gap: 10 }}>
-        <h3 className="section-title" style={{ margin: 0 }}>
-          Sincronizaciones de clientes
-        </h3>
-        <button
-          className="btn btn-primary"
-          style={smallBtn}
-          disabled={!!busy || !meta?.enabled || !production?.enabled || !!activeJob}
-          title={!production?.enabled ? 'Activa la conexión de producción para sincronizar' : activeJob ? 'Ya hay una sincronización en curso' : undefined}
-          onClick={syncNow}
-        >
-          {busy === 'sync' ? 'Lanzando…' : activeJob ? 'En curso…' : 'Sincronizar ahora'}
-        </button>
-      </div>
-
-      {jobs.length === 0 && <p className="empty-state">Todavía no hay sincronizaciones.</p>}
-      {jobs.map((j) => {
-        const st = JOB_STATUS[j.status];
-        return (
-          <div
-            key={j.id}
-            className="info-card"
-            style={{ padding: '10px 14px', marginBottom: 8, cursor: j.result || j.error ? 'pointer' : 'default' }}
-            onClick={() => (j.result || j.error) && setOpenJob(j)}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-              <div style={{ fontSize: 12.5, minWidth: 0 }}>
-                <strong>{fmt(j.createdAt)}</strong> · {j.trigger === 'manual' ? 'Manual' : 'Programada'}
-                {j.attempts > 1 && ` · intento ${j.attempts}`}
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                  {j.result ? summary(j) : j.error ? j.error.message : j.status === 'queued' && j.attempts > 0 ? `Reintento a las ${fmt(j.nextAttemptAt)}` : ''}
-                </div>
-              </div>
-              <span style={pill(st.bg, st.fg)}>{st.label}</span>
-            </div>
-          </div>
-        );
-      })}
-
-      <Modal open={!!editing} onClose={() => busy !== 'save' && setEditing(null)}>
-        {editing && (
+      <Modal open={!!editingConn} onClose={() => busy !== 'save' && setEditingConn(null)}>
+        {editingConn && meta && (
           <ConnectionForm
-            existing={editing.existing}
-            environment={editing.env}
-            strategies={strategies}
+            existing={editingConn.existing}
+            templates={templates}
+            modules={modules}
+            meta={meta}
             busy={busy === 'save'}
             error={formError}
-            onCancel={() => setEditing(null)}
-            onSave={save}
+            onCancel={() => setEditingConn(null)}
+            onSave={saveConnection}
+          />
+        )}
+      </Modal>
+
+      <Modal open={!!editingTpl} onClose={() => busy !== 'save-tpl' && setEditingTpl(null)}>
+        {editingTpl && meta && (
+          <ConnectionTemplateForm
+            existing={editingTpl.existing}
+            systems={meta.systems}
+            authTypes={meta.authTypes}
+            busy={busy === 'save-tpl'}
+            error={tplError}
+            onCancel={() => setEditingTpl(null)}
+            onSave={saveTemplate}
           />
         )}
       </Modal>
@@ -370,11 +352,6 @@ export function ConnectionsManagement() {
                     </div>
                   ))}
                 </div>
-                {openJob.result.failed > openJob.result.errors.length && (
-                  <p style={{ fontSize: 11, color: 'var(--faint)', marginTop: 6 }}>
-                    Se muestran {openJob.result.errors.length} de {openJob.result.failed}.
-                  </p>
-                )}
               </>
             )}
             <div className="rowbtn" style={{ marginTop: 12 }}>
@@ -385,6 +362,285 @@ export function ConnectionsManagement() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+interface CompaniesTabProps {
+  companies: CompanyOption[];
+  openCompany: string;
+  onToggle: (id: string) => void;
+  connections: Connection[];
+  templates: ConnectionTemplate[];
+  systemLabel: (key: string) => string;
+  templateLabel: (templateId: string | null, system: string) => string;
+  meta: ConnectionsMeta | null;
+  busy: string;
+  onTest: (c: Connection) => void;
+  onEdit: (c: Connection) => void;
+  onToggleEnabled: (c: Connection, enabled: boolean) => void;
+  onRemove: (c: Connection) => void;
+  onAdd: () => void;
+  jobs: IntegrationJob[];
+  activeJob: IntegrationJob | undefined;
+  hasSyncableConnection: boolean;
+  onSync: () => void;
+  onOpenJob: (j: IntegrationJob) => void;
+}
+
+function CompaniesTab(props: CompaniesTabProps) {
+  const { companies, openCompany, onToggle, connections, meta, busy } = props;
+
+  return (
+    <div>
+      <div className="note" style={{ marginBottom: 14 }}>
+        <p>
+          Conexión de cada empresa con sus sistemas externos. Las credenciales se guardan cifradas y no se vuelven a mostrar. Una conexión solo se
+          activa después de probarla.
+        </p>
+      </div>
+
+      {companies.length === 0 && <p className="empty-state">No hay empresas.</p>}
+
+      {companies.map((company) => {
+        const open = openCompany === company.id;
+        const count = open ? connections.length : undefined;
+        return (
+          <div key={company.id} className="info-card" style={{ marginBottom: 10, overflow: 'hidden' }}>
+            <button
+              onClick={() => onToggle(company.id)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 10,
+                padding: '14px 16px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: 14 }}>{company.name}</strong>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                  {open ? `${count} conexión(es)` : 'Ver conexiones'}
+                </div>
+              </div>
+              <span style={{ fontSize: 18, color: 'var(--muted)' }}>{open ? '▾' : '▸'}</span>
+            </button>
+
+            {open && (
+              <div style={{ padding: '0 16px 16px' }}>
+                {connections.length === 0 && <p className="empty-state">Esta empresa no tiene conexiones aún.</p>}
+
+                {connections.map((c) => (
+                  <ConnectionCard
+                    key={c.id}
+                    c={c}
+                    templates={props.templates}
+                    systemLabel={props.systemLabel}
+                    templateLabel={props.templateLabel}
+                    meta={meta}
+                    busy={busy}
+                    onTest={props.onTest}
+                    onEdit={props.onEdit}
+                    onToggleEnabled={props.onToggleEnabled}
+                    onRemove={props.onRemove}
+                  />
+                ))}
+
+                <button
+                  className="btn btn-primary"
+                  style={{ ...smallBtn, marginTop: 4 }}
+                  disabled={!meta?.enabled || props.templates.filter((t) => t.enabled).length === 0}
+                  title={props.templates.filter((t) => t.enabled).length === 0 ? 'Crea una plantilla en «Plantillas para sistemas»' : undefined}
+                  onClick={props.onAdd}
+                >
+                  + Agregar conexión
+                </button>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '18px 0 8px', gap: 10 }}>
+                  <h3 className="section-title" style={{ margin: 0 }}>
+                    Sincronizaciones de clientes
+                  </h3>
+                  <button
+                    className="btn btn-primary"
+                    style={smallBtn}
+                    disabled={!!busy || !meta?.enabled || !props.hasSyncableConnection || !!props.activeJob}
+                    title={!props.hasSyncableConnection ? 'Necesitas una conexión de producción activa que sincronice clientes' : props.activeJob ? 'Ya hay una sincronización en curso' : undefined}
+                    onClick={props.onSync}
+                  >
+                    {busy === 'sync' ? 'Lanzando…' : props.activeJob ? 'En curso…' : 'Sincronizar ahora'}
+                  </button>
+                </div>
+
+                {props.jobs.length === 0 && <p className="empty-state">Todavía no hay sincronizaciones.</p>}
+                {props.jobs.map((j) => {
+                  const st = JOB_STATUS[j.status];
+                  return (
+                    <div
+                      key={j.id}
+                      className="info-card"
+                      style={{ padding: '10px 14px', marginBottom: 8, cursor: j.result || j.error ? 'pointer' : 'default' }}
+                      onClick={() => (j.result || j.error) && props.onOpenJob(j)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                        <div style={{ fontSize: 12.5, minWidth: 0 }}>
+                          <strong>{fmt(j.createdAt)}</strong> · {j.trigger === 'manual' ? 'Manual' : 'Programada'}
+                          {j.attempts > 1 && ` · intento ${j.attempts}`}
+                          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                            {j.result ? summary(j) : j.error ? j.error.message : ''}
+                          </div>
+                        </div>
+                        <span style={pill(st.bg, st.fg)}>{st.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ConnectionCardProps {
+  c: Connection;
+  templates: ConnectionTemplate[];
+  systemLabel: (key: string) => string;
+  templateLabel: (templateId: string | null, system: string) => string;
+  meta: ConnectionsMeta | null;
+  busy: string;
+  onTest: (c: Connection) => void;
+  onEdit: (c: Connection) => void;
+  onToggleEnabled: (c: Connection, enabled: boolean) => void;
+  onRemove: (c: Connection) => void;
+}
+
+function ConnectionCard({ c, systemLabel, templateLabel, meta, busy, onTest, onEdit, onToggleEnabled, onRemove }: ConnectionCardProps) {
+  const expiresInDays = c.expiresAt ? Math.ceil((new Date(c.expiresAt).getTime() - Date.now()) / 86_400_000) : null;
+  const tested = c.lastTestStatus === 'ok';
+  return (
+    <div className="info-card" style={{ padding: '14px 16px', marginBottom: 8, opacity: c.enabled ? 1 : 0.55 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <strong style={{ fontSize: 14 }}>{c.label}</strong>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+            {systemLabel(c.system)} · {templateLabel(c.templateId, c.system)} · {ENV_LABEL[c.environment]} · módulo {c.module}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2, wordBreak: 'break-all' }}>{c.baseUrl}</div>
+          <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>
+            Credenciales: {c.hasCredentials ? `guardadas el ${fmt(c.credentialsUpdatedAt)}` : 'sin cargar'} · Última prueba:{' '}
+            {c.lastTestStatus ? `${TEST_STATUS_TEXT[c.lastTestStatus]} (${fmt(c.lastTestAt)})` : 'pendiente'}
+          </div>
+          {expiresInDays !== null && expiresInDays <= EXPIRY_WARN_DAYS && (
+            <div style={{ fontSize: 11.5, color: '#b00020', marginTop: 4, fontWeight: 600 }}>
+              {expiresInDays <= 0 ? 'La credencial está vencida' : `La credencial vence en ${expiresInDays} días`}
+            </div>
+          )}
+        </div>
+        <span style={c.enabled ? pill('var(--green-soft)', 'var(--green-deep)') : pill('#f1f3f5', 'var(--muted)')}>
+          {c.enabled ? 'Activa' : 'Inactiva'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost" style={smallBtn} disabled={!!busy || !meta?.enabled || !c.hasCredentials} onClick={() => onTest(c)}>
+          {busy === `test:${c.id}` ? 'Probando…' : 'Probar conexión'}
+        </button>
+        <button className="btn btn-ghost" style={smallBtn} disabled={!!busy || !meta?.enabled} onClick={() => onEdit(c)}>
+          Editar
+        </button>
+        <button
+          className="btn btn-ghost"
+          style={{ ...smallBtn, color: c.enabled ? '#b00020' : 'var(--green-deep)' }}
+          disabled={!!busy || !meta?.enabled || (!c.enabled && !tested)}
+          title={!c.enabled && !tested ? 'Prueba la conexión antes de activarla' : undefined}
+          onClick={() => onToggleEnabled(c, !c.enabled)}
+        >
+          {c.enabled ? 'Desactivar' : 'Activar'}
+        </button>
+        <button className="btn btn-ghost" style={{ ...smallBtn, color: '#b00020' }} disabled={!!busy} onClick={() => onRemove(c)}>
+          Eliminar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface TemplatesTabProps {
+  meta: ConnectionsMeta | null;
+  templates: ConnectionTemplate[];
+  busy: string;
+  onNew: () => void;
+  onEdit: (t: ConnectionTemplate) => void;
+  onRemove: (t: ConnectionTemplate) => void;
+}
+
+function TemplatesTab({ meta, templates, busy, onNew, onEdit, onRemove }: TemplatesTabProps) {
+  return (
+    <div>
+      <div className="note" style={{ marginBottom: 14 }}>
+        <p>
+          Un <strong>sistema</strong> es un servicio externo (SAP, una API, Copilot Chat Agent…). Una <strong>plantilla</strong> define qué campos
+          (<em>settings</em>) y qué secretos tendrá cada conexión de ese sistema. Al crear una conexión se elige una plantilla y el formulario se
+          arma solo.
+        </p>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Sistemas</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {(meta?.systems ?? []).map((s) => (
+            <span key={s.key} style={pill('var(--green-soft)', 'var(--green-deep)')} title={s.testable ? 'Con adaptador: se puede probar' : 'Sin adaptador: solo configuración'}>
+              {s.label}
+              {s.testable ? ' ✓' : ''}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 8px' }}>
+        <h3 className="section-title" style={{ margin: 0 }}>
+          Plantillas
+        </h3>
+        <button className="btn btn-primary" style={smallBtn} onClick={onNew}>
+          + Nueva plantilla
+        </button>
+      </div>
+
+      {templates.length === 0 && <p className="empty-state">No hay plantillas todavía.</p>}
+      {templates.map((t) => (
+        <div key={t.id} className="info-card" style={{ padding: '12px 16px', marginBottom: 8, opacity: t.enabled ? 1 : 0.55 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <strong style={{ fontSize: 14 }}>{t.label}</strong>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                Sistema: {t.systemKey} · {t.settingsFields.length} campo(s) de settings · {t.secretFields.length} secreto(s)
+                {t.authType ? ` · auth ${t.authType}` : ''}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4, wordBreak: 'break-word' }}>
+                {t.settingsFields.map((f) => f.key).join(', ') || 'sin campos'}
+                {t.secretFields.length ? ` · secretos: ${t.secretFields.map((s) => s.key).join(', ')}` : ''}
+              </div>
+            </div>
+            <span style={t.enabled ? pill('var(--green-soft)', 'var(--green-deep)') : pill('#f1f3f5', 'var(--muted)')}>
+              {t.enabled ? 'Activa' : 'Inactiva'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+            <button className="btn btn-ghost" style={smallBtn} disabled={!!busy} onClick={() => onEdit(t)}>
+              Editar
+            </button>
+            <button className="btn btn-ghost" style={{ ...smallBtn, color: '#b00020' }} disabled={!!busy} onClick={() => onRemove(t)}>
+              Eliminar
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

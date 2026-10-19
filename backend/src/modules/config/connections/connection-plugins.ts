@@ -36,6 +36,11 @@ export class ConnectionPluginsRegistry {
     return [...this.bySystem.keys()];
   }
 
+  /** ¿Hay adaptador de código para este sistema? (validar/probar reales). */
+  has(system: string): boolean {
+    return this.bySystem.has(system);
+  }
+
   get(system: string): ConnectionPlugin {
     const plugin = this.bySystem.get(system);
     if (!plugin) {

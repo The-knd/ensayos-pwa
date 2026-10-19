@@ -1,21 +1,41 @@
-# Integraciones (SAP Business One) — Guía de configuración y uso
+# Integraciones — Guía de configuración y uso
 
-Módulo de superadmin para **configurar la conexión de cada empresa con SAP B1**
-(credenciales cifradas) y **sincronizar sus clientes** desde el maestro de SAP.
+Módulo de superadmin para **configurar conexiones de cada empresa con sistemas
+externos** (credenciales cifradas) y, con SAP Business One, **sincronizar sus
+clientes** desde el maestro de SAP.
+
+El alta de conexiones es **agnóstica y guiada por plantillas**: no está atada a
+SAP. Un *sistema* (SAP, una API, Copilot Chat Agent…) es una clave del catálogo
+`connection_systems`; una *plantilla* (`connection_templates`) declara qué campos
+de `settings` y qué secretos tiene una conexión de ese sistema, y la interfaz se
+arma sola.
 
 Código, por capas:
 
 - `backend/src/modules/config/connections/` — **genérico**: conexiones (URL,
-  credenciales cifradas, ajustes) y la administración del superadmin. No conoce
-  a SAP ni el vocabulario de clientes; expone el puerto `ConnectionPlugin`.
+  credenciales cifradas, ajustes), catálogo de sistemas y plantillas, y la
+  administración del superadmin. No conoce a SAP ni el vocabulario de clientes;
+  expone el puerto `ConnectionPlugin`.
 - `backend/src/modules/clients/sync/` — **genérico**: estrategias de lectura
   (puerto `ClientSyncStrategy`), cola de jobs, worker y disparo manual.
 - `backend/src/modules/sap/` — **adaptador SAP**: implementa ambos puertos
   (`SapConnectionPlugin`, `SapB1ClientSyncStrategy`). Único lugar donde vive el
   identificador `'sap'`.
 
-Interfaz: *Configuración global → pestaña **Conexiones***
+Interfaz: *Configuración global → pestaña **Conexiones*** con dos pestañas:
+**Conexiones Empresas** y **Plantillas para sistemas**
 (`frontend/src/modules/global/`).
+
+### Modelo de datos
+
+- `connection_systems` (global) — catálogo de sistemas: `key`, `label`,
+  `enabled`, `sort_order`. Sembrado con `sap`, `api`, `copilot-chat-agent`.
+- `connection_templates` (global) — plantilla por sistema: `system_key`, `label`,
+  `settings_fields` (jsonb), `secret_fields` (jsonb), `auth_type`, `enabled`.
+- `integration_connections` (por empresa, con RLS) — `module` (módulo de la app
+  que la usa, p. ej. `clients`), `label` (nombre visible, único por empresa),
+  `template_id`, `system`, `environment`, `base_url`, `settings` y
+  `credentials_encrypted` (blob cifrado que guarda **varios** secretos).
 
 ---
 
@@ -37,8 +57,18 @@ Interfaz: *Configuración global → pestaña **Conexiones***
 
 ## 2. Aplicar las migraciones
 
-La migración relevante es `1700000028000-IntegrationConnections`. Si falta
+La migración relevante es `1700000028000-IntegrationConnections` (esquema base)
+y `1700000029000-ConnectionTemplates` (catálogo de sistemas, plantillas y los
+campos `module`/`label`/`template_id` en `integration_connections`). Si falta
 alguna previa, `migration:run` las aplica todas en orden.
+
+> Las **credenciales existentes no se invalidan**: el AAD del cifrado pasó de
+> `empresa:sistema:entorno` a `empresa:id`, y al descifrar se reintenta con el
+> AAD anterior. Una conexión antigua sigue conectando sin recargar nada; al
+> editarla y reenviar sus secretos, se re-cifra con el AAD nuevo.
+>
+> La migración da de alta las conexiones existentes como `module = 'clients'` y
+> `label = '<sistema> · <entorno>'`.
 
 **Dev (host → Postgres de Docker):**
 ```bash
@@ -58,7 +88,8 @@ Verificar:
 ```bash
 docker exec pwa-postgres psql -U pwa_user -d pwa_db \
   -c "SELECT name FROM migrations ORDER BY id DESC LIMIT 3;" \
-  -c "\dt integration_*" -c "\dt client_external_refs"
+  -c "\dt integration_*" -c "\dt client_external_refs" \
+  -c "\dt connection_*" -c "SELECT key, label FROM connection_systems ORDER BY sort_order;"
 ```
 
 Revertir la última: `npm run migration:revert`.
@@ -116,30 +147,65 @@ tanto aquí como en `INTEGRATIONS_ALLOWED_HOSTS`.
 
 ---
 
-## 5. Configurar la conexión y las credenciales (UI)
+## 5. Configurar conexiones (UI)
 
-1. Entra como **superadmin** → *Configuración global* → pestaña **Conexiones**.
-2. Selecciona la **empresa** en el desplegable.
-3. En la tarjeta *SAP · Producción* pulsa **Configurar** (o **Editar** si ya existe).
-4. Completa el formulario:
-   - **URL del Service Layer** — `https://sap.tuempresa.com:50000/b1s/v1`
-   - **Base de la compañía (CompanyDB)** — p. ej. `SBO_EMPRESA`
-   - **Usuario** y **Contraseña** — de SAP. Son **de solo escritura**: el servidor
-     nunca los devuelve. Al editar, déjalos vacíos para conservar los guardados;
-     para cambiarlos, escribe usuario **y** contraseña.
-   - **Sincronizar cada (minutos)** — vacío = solo manual; mínimo 15.
-   - **Registros por página** — tamaño de página OData (default 200).
-   - **Vencimiento de la credencial** — opcional; avisa 15 días antes.
-   - **Datos que manda SAP** — casillas de los campos que el ERP puede
-     sobrescribir; el resto solo se edita en la app.
-5. **Guardar**. Las credenciales se cifran (AES-256-GCM) y no vuelven a mostrarse.
-   La conexión queda **inactiva** hasta que se pruebe.
-6. Pulsa **Probar conexión**. Si sale *Conexión correcta*, ya puedes **Activar**.
-   Cambiar URL/credenciales/ajustes de conexión desactiva la conexión y obliga a
-   volver a probar.
+Entra como **superadmin** → *Configuración global* → pestaña **Conexiones**. Hay
+dos pestañas:
 
-> Hay dos entornos por empresa: **Producción** (sincroniza clientes) y
-> **Pruebas** (solo sirve para *Probar conexión*; no escribe clientes).
+### 5.1 Plantillas para sistemas
+
+Define, por sistema, qué campos y secretos tendrá una conexión. Es **global**.
+
+1. Arriba se listan los **sistemas** del catálogo (chip con `✓` = tiene adaptador
+   de código, se puede *Probar*).
+2. Pulsa **+ Nueva plantilla**:
+   - **Sistema** — elige uno del catálogo (autocompleta) o escribe una clave
+     nueva (se crea sola en el catálogo).
+   - **Campos de settings** — cada fila es `clave`, `etiqueta`, `tipo`
+     (`text | number | boolean | json | select | multiselect`), **Obligatorio**,
+     **Operativo** y valor por defecto. `Operativo` = cambiarlo **no** obliga a
+     volver a probar la conexión (p. ej. `pageSize`, `schedule`, `ownedFields`).
+   - **Secretos** — cada fila es `clave`, `etiqueta`, `Obligatorio` (p. ej.
+     `username`, `password`, `token`).
+   - **Tipo de autenticación por defecto** — informativo para las conexiones
+     nuevas.
+3. Guardar. La plantilla ya está disponible para crear conexiones.
+
+> SAP trae una plantilla sembrada por la migración (`strategy`, `companyDb`,
+> `cardType`, `pageSize`, `schedule`, `ownedFields` + secretos `username`,
+> `password`). Edítala si necesitas ajustar los campos, pero **`settings.strategy`
+> debe ser una estrategia registrada** (`sap-b1`, `sap-b1-empresa1`,
+> `sap-b1-empresa2`) o el guardado fallará.
+
+### 5.2 Conexiones Empresas
+
+1. Se listan las **empresas** como tarjetas. Pulsa una para **expandirla** (abrir
+   una cierra la anterior).
+2. Dentro verás sus conexiones y el botón **+ Agregar conexión**.
+3. En el formulario (armado desde la plantilla elegida):
+   - **Plantilla del sistema** — determina los campos y secretos.
+   - **Nombre de la conexión** — visible, único por empresa (identifica varias
+     conexiones de la misma empresa/sistema).
+   - **Módulo** — módulo de la app que la usa (`clients`, …).
+   - **URL base** — debe empezar por `https://` y su host estar autorizado.
+   - **Entorno** — Producción (sincroniza) o Pruebas (solo probar).
+   - **Ajustes** — los campos de la plantilla. Puedes añadir más pares
+     clave/valor con **+ Agregar campo** (texto, número, `true/false` o JSON).
+   - **Credenciales** — los secretos de la plantilla. Son **de solo escritura**:
+     al editar, déjalos vacíos para conservar los guardados.
+   - **Tipo de autenticación** y **Vencimiento** (avisa 15 días antes).
+4. **Guardar**. Las credenciales se cifran (AES-256-GCM) y no vuelven a
+   mostrarse. La conexión queda **inactiva** (tarjeta atenuada).
+5. Pulsa **Probar conexión**. Si sale *Conexión correcta*, ya puedes **Activar**.
+   Cambiar URL, sistema, credenciales o ajustes de conexión desactiva la conexión
+   y obliga a volver a probar.
+6. **Editar / Eliminar** en cada tarjeta. Las conexiones **inactivas** se ven
+   atenuadas.
+
+> Puedes tener **varias conexiones por empresa y sistema** (p. ej. SAP de dos
+> bases distintas); se distinguen por su **nombre**. Un usuario con varias
+> conexiones del mismo sistema en Producción: la sincronización usa la **más
+> antigua activa** con estrategia registrada.
 
 ---
 
@@ -172,15 +238,31 @@ sincronización de la suya y seguir el resultado:
 > `ClientsController` define `GET /clients/:id`: una ruta desnuda
 > `/clients/sync` caería en ese `:id`.
 
-Administración de conexiones (solo superadmin, `/api/connections`):
+Administración de conexiones (solo superadmin, `/api/connections`). Las
+conexiones se identifican por **`id`** (una empresa puede tener varias del mismo
+sistema):
 
 | Método y ruta | Descripción |
 |---|---|
-| `GET /api/connections/meta` | `{ enabled, systems, environments, authTypes }`. |
+| `GET /api/connections/meta` | `{ enabled, systems: [{key,label,testable}], environments, authTypes }`. |
+| `GET /api/connections/templates` | Lista de plantillas. |
+| `POST /api/connections/templates` | Crea plantilla (`systemKey`, `label`, `settingsFields`, `secretFields`, `authType?`, `enabled?`). |
+| `PUT /api/connections/templates/:id` | Edita plantilla. |
+| `DELETE /api/connections/templates/:id` | Elimina plantilla. |
+| `POST /api/connections/systems` | Añade un sistema al catálogo (`key`, `label`). |
 | `GET /api/connections/companies/:companyId` | Lista de conexiones (sin credenciales). |
-| `PUT /api/connections/companies/:companyId/:system/:environment` | Alta/edición. |
-| `DELETE /api/connections/companies/:companyId/:system/:environment` | Elimina. |
-| `POST /api/connections/companies/:companyId/:system/:environment/test` | Abre/cierra sesión y guarda el resultado. |
+| `POST /api/connections/companies/:companyId` | Crea conexión. |
+| `GET /api/connections/companies/:companyId/:id` | Una conexión. |
+| `PUT /api/connections/companies/:companyId/:id` | Edita conexión. |
+| `DELETE /api/connections/companies/:companyId/:id` | Elimina conexión. |
+| `POST /api/connections/companies/:companyId/:id/test` | Abre/cierra sesión y guarda el resultado. |
+
+Cuerpo de alta/edición (`CreateConnectionDto` / `UpdateConnectionDto`):
+`label`, `module`, `system`, `environment`, `templateId?`, `authType?`,
+`baseUrl`, `settings` (objeto), `credentials?` (mapa `clave→valor`; ausente al
+editar = conservar), `expiresAt?`, `enabled?`. `settings` se valida contra los
+campos obligatorios de la plantilla y, si hay adaptador, contra el plugin del
+sistema.
 
 - **Empresa efectiva:** un usuario normal siempre sincroniza **su** empresa (se
   toma del token; cualquier `companyId` del request se ignora). El superadmin,
@@ -262,6 +344,9 @@ borran clientes locales cuando desaparecen del origen.
 | Prueba = *auth* | Usuario/contraseña rechazados por SAP (no reintenta; pausa la empresa). |
 | Prueba = *transient* | Red/timeout/5xx: revisa el proxy de salida y el puerto. |
 | `Prueba la conexión antes de activarla` | Activar exige una prueba previa correcta. |
+| `El campo 'X' es obligatorio` / `El secreto 'X' es obligatorio` | Falta un campo/secreto marcado como obligatorio en la plantilla. |
+| `settings.strategy debe ser una de: …` | El `strategy` no es una estrategia registrada para el sistema. |
+| No aparece el botón *Agregar conexión* | No hay plantillas habilitadas: créalas en «Plantillas para sistemas». |
 | El job se queda en cola | Worker apagado (`CLIENT_SYNC_POLL_INTERVAL_MS=0`) o `INTEGRATIONS_ENABLED=false`. |
 | No llegan clientes nuevos | Falta en `INTEGRATIONS_ALLOWED_HOSTS`/squid; o el `UpdateDate` no supera el `last_synced_at` del enlace. |
 
