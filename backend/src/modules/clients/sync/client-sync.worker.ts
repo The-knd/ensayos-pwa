@@ -12,6 +12,7 @@ import { IntegrationJob, IntegrationJobTrigger } from './entities/integration-jo
 import { IntegrationJobsService } from './jobs/integration-jobs.service';
 import { IntegrationOperation } from './integration-operation';
 import { ClientSyncSettingsDto } from './client-sync.strategy';
+import { ClientSyncStrategyRegistry } from './client-sync-strategy.registry';
 import { ClientSyncRunner } from './client-sync-runner.service';
 
 const INTERVAL_NAME = 'client-sync-worker';
@@ -44,6 +45,7 @@ export class ClientSyncWorker implements OnModuleInit {
     private readonly connections: ConnectionsService,
     private readonly jobs: IntegrationJobsService,
     private readonly runner: ClientSyncRunner,
+    private readonly strategies: ClientSyncStrategyRegistry,
     private readonly config: ConfigService,
     private readonly scheduler: SchedulerRegistry,
     private readonly logger: StructuredLogger,
@@ -80,6 +82,9 @@ export class ClientSyncWorker implements OnModuleInit {
       const conns = await m.find(IntegrationConnection, { where: { companyId, environment: IntegrationEnvironment.PRODUCTION, enabled: true } });
       const result: IntegrationConnection[] = [];
       for (const conn of conns) {
+        // Solo sistemas con estrategia de sincronización registrada (p. ej. SAP);
+        // una conexión de otro sistema (api, copilot…) nunca dispara sync.
+        if (this.strategies.keysFor(conn.system).length === 0) continue;
         const every = (conn.settings as unknown as ClientSyncSettingsDto).schedule?.everyMinutes;
         if (!every) continue;
         const last = await this.jobs.latest(m, { companyId, system: conn.system, operation: IntegrationOperation.CLIENTS_SYNC });

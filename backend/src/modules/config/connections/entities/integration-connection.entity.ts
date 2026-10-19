@@ -10,7 +10,7 @@ import { IntegrationAuthType, IntegrationEnvironment, IntegrationSystem } from '
  * ConnectionsService.loadForUse lo pide, y solo para conectar.
  */
 @Entity('integration_connections')
-@Unique('UQ_integration_connections_company_system_env', ['companyId', 'system', 'environment'])
+@Unique('UQ_integration_connections_company_label', ['companyId', 'label'])
 export class IntegrationConnection {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -18,8 +18,21 @@ export class IntegrationConnection {
   @Column({ name: 'company_id', type: 'uuid' })
   companyId: string;
 
+  /** Sistema externo (clave del catálogo `connection_systems`). Identificador abierto. */
   @Column({ type: 'varchar', length: 40 })
   system: IntegrationSystem;
+
+  /** Módulo de la app que consume esta conexión (`modules.module`, p. ej. `clients`). */
+  @Column({ type: 'varchar', length: 60 })
+  module: string;
+
+  /** Nombre visible para identificar la conexión entre varias de la misma empresa. */
+  @Column({ type: 'varchar', length: 120 })
+  label: string;
+
+  /** Plantilla del sistema con la que se definió (opcional; solo trazabilidad). */
+  @Column({ name: 'template_id', type: 'uuid', nullable: true })
+  templateId: string | null;
 
   @Column({ type: 'varchar', length: 20, default: IntegrationEnvironment.PRODUCTION })
   environment: IntegrationEnvironment;
