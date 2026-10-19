@@ -10,6 +10,7 @@ import { creditsModule } from '../credits/credits.routes';
 import { discountsModule } from '../discounts/discounts.routes';
 import { expensesModule } from '../expenses/expenses.routes';
 import { newProductsModule } from '../newProducts/newProducts.routes';
+import { peliculasModule } from '../peliculas/peliculas.routes';
 import { portfolioModule } from '../portfolio/portfolio.routes';
 import { pricesModule } from '../prices/prices.routes';
 import { profilesModule } from '../profiles/profiles.routes';
@@ -39,6 +40,7 @@ export const MODULES: FrontendModule[] = [
   complaintsModule,
   pricesModule,
   newProductsModule,
+  peliculasModule,
   routesModule,
   brainModule,
   calculatorModule,

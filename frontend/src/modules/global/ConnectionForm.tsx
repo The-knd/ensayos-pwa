@@ -139,7 +139,7 @@ export function ConnectionForm({ existing, templates, modules, meta, busy, error
     }
     if (label.trim() === '') return setLocalError('El nombre de la conexión es obligatorio');
     if (module === '') return setLocalError('El módulo es obligatorio');
-    if (!/^https:\/\//i.test(baseUrl.trim())) return setLocalError('La URL debe empezar por https://');
+    if (!/^https?:\/\//i.test(baseUrl.trim())) return setLocalError('La URL debe empezar por http:// o https://');
 
     const built = buildSettings();
     if (!built.ok) return setLocalError(built.error);
@@ -292,7 +292,7 @@ export function ConnectionForm({ existing, templates, modules, meta, busy, error
           <div className="row2">
             <div className="field" style={{ flex: 2 }}>
               <label>* URL base</label>
-              <input className="inp" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://sistema.empresa.com" />
+              <input className="inp" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://sistema.empresa.com o http://localhost:8005" />
             </div>
             <div className="field" style={{ flex: 1 }}>
               <label>Entorno</label>

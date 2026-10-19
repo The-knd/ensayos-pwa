@@ -1,5 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getApiError } from '../../shared/api/apiError';
+import { httpClient } from '../../shared/api/httpClient';
+import { Modal } from '../../shared/components/Modal';
 import { useAuth } from '../auth/AuthContext';
 import { isRegisteredPath } from '../registry';
 
@@ -58,6 +61,16 @@ const ICONS: Record<string, React.ReactNode> = {
   config: (
     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
   ),
+  mascotas: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="8" cy="9" r="2.2" stroke="currentColor" strokeWidth="2" />
+      <circle cx="16" cy="9" r="2.2" stroke="currentColor" strokeWidth="2" />
+      <path d="M6 16c1-1.2 2.4-1.8 4-1.8s3 0.6 4 1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M5 6c-1 0-2 0.6-2 2v2c0 0.8 0.4 1.5 1 1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19 6c1 0 2 0.6 2 2v2c0 0.8-0.4 1.5-1 1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="5" r="2" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  ),
   perfiles: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
   ),
@@ -76,6 +89,12 @@ export function HomePage() {
   const navigate = useNavigate();
   const placements = bootstrap?.modulePlacements || [];
   const flags = bootstrap?.featureFlags || {};
+  const [mascotas, setMascotas] = useState<{ open: boolean; loading: boolean; data: unknown; error: string }>({
+    open: false,
+    loading: false,
+    data: null,
+    error: '',
+  });
 
   const hasPerm = (perm: string) => {
     const [mod] = perm.split('.');
@@ -99,7 +118,7 @@ export function HomePage() {
   useEffect(() => {
     const mods = new Set(placements.map((p) => p.module));
     mods.forEach((m) => loadModuleContext(m).catch(() => undefined));
-  }, [placements.length]);
+  }, [placements.length, loadModuleContext]);
 
   // DEV: avisa de tiles cuyo path (BD) no tiene pantalla en modules/registry.
   // En prod se muestran igual para no ocultar módulos por un error de config.
@@ -177,8 +196,53 @@ export function HomePage() {
               <div className="ic">{ICONS.config}</div>
               <span>Configuración global</span>
             </Link>
+            <button
+              className="tile"
+              type="button"
+              onClick={async () => {
+                setMascotas({ open: true, loading: true, data: null, error: '' });
+                try {
+                  const res = await httpClient.get('/mascotas/consultar');
+                  setMascotas({ open: true, loading: false, data: res.data, error: '' });
+                } catch (err: unknown) {
+                  const msg = getApiError(err)?.message || 'No se pudo consultar el servicio de Mascotas';
+                  setMascotas({ open: true, loading: false, data: null, error: msg });
+                }
+              }}
+              style={{ cursor: 'pointer', border: 'none', font: 'inherit', textAlign: 'left' }}
+            >
+              <div className="ic">{ICONS.mascotas}</div>
+              <span>Consultar mascotas</span>
+            </button>
           </div>
         </div>
+
+        <Modal open={mascotas.open} onClose={() => setMascotas((s) => ({ ...s, open: false }))}>
+          <div className="sectitle">Mascotas · respuesta cruda (JSON)</div>
+          {mascotas.loading && <p className="empty-state">Consultando el servicio de mascotas...</p>}
+          {mascotas.error && <div style={{ color: '#b00020', fontSize: 12 }}>{mascotas.error}</div>}
+          {!mascotas.loading && !mascotas.error && (
+            <pre
+              style={{
+                maxHeight: '50vh',
+                overflow: 'auto',
+                background: 'rgba(0, 0, 0, 0.04)',
+                padding: 12,
+                borderRadius: 10,
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {JSON.stringify(mascotas.data, null, 2)}
+            </pre>
+          )}
+          <div className="rowbtn" style={{ justifyContent: 'flex-end' }}>
+            <button className="btn btn-ghost" type="button" onClick={() => setMascotas((s) => ({ ...s, open: false }))}>
+              Cerrar
+            </button>
+          </div>
+        </Modal>
       </div>
     );
   }

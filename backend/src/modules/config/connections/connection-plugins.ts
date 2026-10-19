@@ -7,11 +7,18 @@ import { IntegrationCredentials } from './integration.types';
  * `config/connections` pueda validar ajustes y probar la conexión SIN conocer
  * el vocabulario del sistema ni el de clientes. Solo declara:
  *   - `system`: el identificador abierto que el adaptador se atribuye.
+ *   - `module` (opcional): si el adaptador es propio de un módulo de la app (p.
+ *     ej. `peliculas` dentro del sistema genérico `api`), lo declara aquí; la
+ *     clave del registro pasa a ser `system.module` y pueden coexistir varios
+ *     adaptadores sobre un mismo sistema.
  *   - `validateSettings`: sanea/valida `settings` al guardar la conexión.
  *   - `test`: abre y cierra una sesión real; lanza `IntegrationError`.
  */
 export interface ConnectionPlugin {
   readonly system: string;
+
+  /** Módulo de la app cuyo adaptador es (vacío = aplica al sistema entero, p. ej. SAP). */
+  readonly module?: string;
 
   validateSettings(settings: Record<string, unknown>): Record<string, unknown>;
 
@@ -22,30 +29,44 @@ export interface ConnectionPlugin {
  * Registro de plugins en tiempo de ejecución. Los adaptadores se dan de alta con
  * `register()` (vía `onModuleInit`), así que añadir un sistema no requiere
  * tocar este módulo ni ningún enum.
+ *
+ * Clave: `system` (adaptador del sistema entero) o `system.module` (adaptador
+ * de un módulo concreto). Al buscar por (sistema, módulo) se mira primero el
+ * específico del módulo y, en su defecto, el del sistema; sin módulo se acepta
+ * cualquier adaptador del sistema (p. ej. `has('api')` con solo `api.peliculas`).
  */
 @Injectable()
 export class ConnectionPluginsRegistry {
-  private readonly bySystem = new Map<string, ConnectionPlugin>();
+  private readonly byKey = new Map<string, ConnectionPlugin>();
+
+  private static keyOf(system: string, module?: string): string {
+    return module ? `${system}.${module}` : system;
+  }
 
   register(plugin: ConnectionPlugin) {
-    this.bySystem.set(plugin.system, plugin);
+    this.byKey.set(ConnectionPluginsRegistry.keyOf(plugin.system, plugin.module), plugin);
   }
 
   /** Sistemas con plugin registrado (lo que la GUI puede pintar). */
   systems(): string[] {
-    return [...this.bySystem.keys()];
+    return [...new Set([...this.byKey.values()].map((plugin) => plugin.system))];
   }
 
-  /** ¿Hay adaptador de código para este sistema? (validar/probar reales). */
-  has(system: string): boolean {
-    return this.bySystem.has(system);
+  /** ¿Hay adaptador de código para este sistema (y módulo, si se indica)? (validar/probar reales). */
+  has(system: string, module?: string): boolean {
+    if (module) return this.byKey.has(ConnectionPluginsRegistry.keyOf(system, module)) || this.byKey.has(system);
+    return this.byKey.has(system) || [...this.byKey.keys()].some((key) => key.startsWith(`${system}.`));
   }
 
-  get(system: string): ConnectionPlugin {
-    const plugin = this.bySystem.get(system);
+  get(system: string, module?: string): ConnectionPlugin {
+    if (module) {
+      const specific = this.byKey.get(ConnectionPluginsRegistry.keyOf(system, module));
+      if (specific) return specific;
+    }
+    const plugin = this.byKey.get(system);
     if (!plugin) {
       throw new BadRequestException(
-        `Sistema no soportado: ${system}. Registrados: ${this.systems().join(', ') || '(ninguno)'}`,
+        `Sistema no soportado: ${system}${module ? ` (módulo ${module})` : ''}. Registrados: ${this.systems().join(', ') || '(ninguno)'}`,
       );
     }
     return plugin;

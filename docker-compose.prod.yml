@@ -98,6 +98,11 @@ services:
     environment:
       # Salida a Saman por el proxy con lista blanca (sin egreso directo).
       SAMAN_HTTPS_PROXY: http://egress-proxy:3128
+      # Módulo Mascotas: servicio externo en el mismo host (fuera de Docker).
+      # En Docker el backend llega al host con host.docker.internal.
+      MASCOTAS_API_URL: ${MASCOTAS_API_URL:-http://host.docker.internal:8005}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Migraciones automáticas en cada deploy, antes de levantar el servidor.
     # Se ejecutan con DB_MIGRATE_AS_OWNER=true para conectar como DB_USER
     # (owner, puede hacer DDL) aunque el runtime use DB_APP_USER. Las variables

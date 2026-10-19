@@ -33,7 +33,7 @@ class ConnectionFieldsDto {
   @IsEnum(IntegrationAuthType)
   authType?: IntegrationAuthType;
 
-  @IsUrl({ protocols: ['https'], require_protocol: true, require_tld: false })
+  @IsUrl({ protocols: ['https', 'http'], require_protocol: true, require_tld: false })
   baseUrl: string;
 
   /** Se valida contra la plantilla y, si hay adaptador, contra su plugin. */
@@ -87,7 +87,7 @@ export class UpdateConnectionDto {
   authType?: IntegrationAuthType;
 
   @IsOptional()
-  @IsUrl({ protocols: ['https'], require_protocol: true, require_tld: false })
+  @IsUrl({ protocols: ['https', 'http'], require_protocol: true, require_tld: false })
   baseUrl?: string;
 
   @IsOptional()

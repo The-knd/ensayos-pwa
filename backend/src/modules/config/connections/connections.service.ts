@@ -95,7 +95,7 @@ export class ConnectionsService {
     await this.ensureCompany(companyId);
     this.assertAllowedHost(dto.baseUrl);
     const template = await this.resolveTemplate(dto.templateId, dto.system);
-    const settings = this.validateSettings(dto.system, template, dto.settings);
+    const settings = this.validateSettings(dto.system, dto.module, template, dto.settings);
     const credentials = dto.credentials ? this.buildCredentials(template, dto.credentials) : null;
 
     const saved = await inTenant(this.dataSource, companyId, async (m) => {
@@ -145,12 +145,13 @@ export class ConnectionsService {
       if (!conn) throw new NotFoundException('Conexión no encontrada');
 
       const system = dto.system ?? conn.system;
+      const module = dto.module ?? conn.module;
       const templateId = dto.templateId !== undefined ? dto.templateId : conn.templateId;
       const template = await this.resolveTemplate(templateId, system);
       const baseUrl = dto.baseUrl ?? conn.baseUrl;
       this.assertAllowedHost(baseUrl);
 
-      const settings = dto.settings !== undefined ? this.validateSettings(system, template, dto.settings) : conn.settings;
+      const settings = dto.settings !== undefined ? this.validateSettings(system, module, template, dto.settings) : conn.settings;
       const credentials = dto.credentials ? this.buildCredentials(template, dto.credentials) : null;
       // El authType por defecto de la plantilla solo aplica al crear; en una
       // edición se conserva el guardado salvo que se indique otro.
@@ -226,12 +227,18 @@ export class ConnectionsService {
   }
 
   /**
-   * Conexión habilitada + credenciales de un (empresa, sistema, entorno), para
-   * la sincronización. Determinista: la más antigua si hubiera varias.
+   * Conexión habilitada + credenciales de un (empresa, sistema, entorno) — y,
+   * opcionalmente, de un módulo concreto (p. ej. `peliculas` dentro de `api`).
+   * Determinista: la más antigua si hubiera varias.
    */
-  async loadForUse(companyId: string, system: IntegrationSystem, environment: IntegrationEnvironment) {
+  async loadForUse(
+    companyId: string,
+    system: IntegrationSystem,
+    environment: IntegrationEnvironment,
+    module?: string,
+  ) {
     const connection = await inTenant(this.dataSource, companyId, (m) =>
-      this.findWithSecret(m, companyId, { system, environment, enabled: true }),
+      this.findWithSecret(m, companyId, { system, environment, enabled: true, ...(module ? { module } : {}) }),
     );
     if (!connection) throw new IntegrationError('definitive', 'No hay conexión configurada');
     return { connection, credentials: this.decryptCredentials(connection) };
@@ -242,7 +249,7 @@ export class ConnectionsService {
     this.ensureEnabled();
     await this.ensureCompany(companyId);
     const { connection, credentials } = await this.loadById(companyId, id);
-    const plugin = this.plugins.get(connection.system);
+    const plugin = this.plugins.get(connection.system, connection.module);
     let status: ConnectionTestStatus = 'ok';
     let message = 'Conexión correcta';
     try {
@@ -269,16 +276,21 @@ export class ConnectionsService {
     return this.templates.findTemplateForSystem(system);
   }
 
-  /** Valida `settings` contra la plantilla (obligatorios) y, si hay, contra el adaptador. */
-  private validateSettings(system: string, template: ConnectionTemplate | null, settings: Record<string, unknown>): Record<string, unknown> {
+  /** Valida `settings` contra la plantilla (obligatorios) y, si hay, contra el adaptador del (sistema, módulo). */
+  private validateSettings(
+    system: string,
+    module: string,
+    template: ConnectionTemplate | null,
+    settings: Record<string, unknown>,
+  ): Record<string, unknown> {
     const cleaned = { ...settings };
     for (const field of template?.settingsFields ?? []) {
       if (field.required && isEmptyValue(cleaned[field.key])) {
         throw new BadRequestException(`El campo '${field.label ?? field.key}' es obligatorio`);
       }
     }
-    if (this.plugins.has(system)) {
-      return this.plugins.get(system).validateSettings(cleaned);
+    if (this.plugins.has(system, module)) {
+      return this.plugins.get(system, module).validateSettings(cleaned);
     }
     return cleaned;
   }

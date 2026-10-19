@@ -70,4 +70,10 @@ export const envValidationSchema = Joi.object({
   // Cada cuánto el worker procesa sincronizaciones pendientes y programadas (0 = apagado).
   CLIENT_SYNC_POLL_INTERVAL_MS: Joi.number().integer().min(0).default(60000),
   CLIENT_SYNC_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
+
+  // Módulo de sistema "Mascotas": servicio externo en el mismo host, fuera de
+  // Docker. Dev nativo usa http://localhost:8005; docker-compose lo apunta a
+  // http://host.docker.internal:8005 (ver extra_hosts del servicio backend).
+  MASCOTAS_API_URL: Joi.string().uri().allow('').default('http://localhost:8005'),
+  MASCOTAS_REQUEST_TIMEOUT_MS: Joi.number().integer().min(500).default(5000),
 });

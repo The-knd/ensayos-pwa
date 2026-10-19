@@ -6,6 +6,17 @@
 > credenciales y procedimientos de prueba en [TEST-GUIDE.md](TEST-GUIDE.md).
 > Para módulos **de sistema** (sin pantallas, con comportamiento por empresa y lanzables desde un
 > módulo de usuarios) ver el [Anexo B](#anexo-b--módulos-de-sistema).
+>
+> Documentos relacionados, si el módulo consume sistemas externos (ver
+> [§0.4](#04-módulos-con-conexiones-sistemas-externos-y-estrategias)):
+>
+> - [CONECTIONS-GUIDE.md](CONECTIONS-GUIDE.md) — modelo de conexiones por empresa (catálogos, plantillas,
+>   credenciales cifradas, prueba y activación).
+> - [CONNECTION-TEMPLATES-GUIDE.md](CONNECTION-TEMPLATES-GUIDE.md) — configurar plantillas y conexiones
+>   desde la GUI (paso a paso).
+> - [STRATEGY-GUIDE.md](STRATEGY-GUIDE.md) — crear y registrar estrategias por empresa.
+> - [DESDE-CERO-GUIDE.md](DESDE-CERO-GUIDE.md) — crear, conectar y probar los módulos `peliculas` y
+>   `mascotas` partiendo de cero (incluye mocks locales).
 
 ---
 
@@ -52,6 +63,49 @@ NestJS :3000 (/api/<module>/..., @Permissions)`. El backend **no publica puertos
   está en `.gitignore`.
 - **SQL manual** para dar de alta el módulo: se hace desde la GUI.
 - **`App.tsx`**: las rutas de módulos se generan desde el registro.
+
+### 0.4 Módulos con conexiones, sistemas externos y estrategias
+
+Si el módulo habla con un sistema externo (SAP, un API propio…), hay **tres catálogos distintos** que
+no conviene mezclar:
+
+| Catálogo | Quién lo llena | Sirve para | Ejemplos |
+| --- | --- | --- | --- |
+| `modules` (GUI) | Admin desde Configuración → Módulos | Qué módulos **existen en la app**: tile, rutas, permisos `<module>.*` | `peliculas`, `credits` |
+| `connection_systems` (BD) | Migración / GUI de Conexiones | Tipos de **sistema externo** que una conexión puede declarar | `sap`, `api`, `copilot-chat-agent` |
+| Registro de plugins (código) | `OnModuleInit` de cada adaptador | Qué sistemas/módulos pueden **validarse y probarse** realmente | `sap`, `api.peliculas` |
+
+Diferencias clave:
+
+- **`module` (módulo de GUI) ≠ `system` (sistema externo).** Un módulo de GUI (`peliculas`) *consume*
+  conexiones; el sistema externo (`api`) es lo que declara la conexión. En `integration_connections` se
+  guardan **ambos**: `system` + `module`.
+- **Clave del registro de plugins: `system.module`.** Permite convivir con varios adaptadores sobre un
+  mismo sistema: `SapConnectionPlugin` es `sap` (todo el sistema) y `PeliculasConnectionPlugin` es
+  `api.peliculas` (solo ese módulo). Al buscar por (sistema, módulo) se mira primero el específico
+  (`api.peliculas`) y, si no, el genérico (`api`); no hay vuelta atrás entre módulos distintos.
+  `has('api')` sin módulo es `true` si existe cualquier `api.*`.
+- **La plantilla (`connection_templates`) es lo que la GUI del formulario dibuja** (campos `settings` y
+  secretos); el adaptador de código es quien realmente valida y prueba. Ambos deben coincidir en
+  claves: p. ej. plantilla con campo `strategy` y adaptador que exige
+  `settings.strategy ∈ [default, empresa1]`.
+- **`loadForUse(companyId, system, environment, module?)`:** los consumidores deben indicar su módulo
+  (`'peliculas'`) para que la conexión resuelta sea la suya y no la de otro módulo que use el mismo
+  sistema. La sincronización de clientes (sin módulo) sigue resolviendo por sistema entero.
+- **Módulo de sistema (Anexo B) ≠ módulo de GUI.** Un módulo de sistema (`mascotas`, `sap`) **no**
+  se da de alta en la GUI: no tiene fila en `modules`, ni permisos propios, ni tile. Se lanza desde un
+  botón de otro módulo o desde el panel superadmin, y se protege con `JwtAuthGuard` + `SuperAdminGuard`
+  (o con el permiso del módulo que lo dispara). Además:
+
+  | | Módulo de GUI | Módulo de sistema |
+  | --- | --- | --- |
+  | Fila en `modules` | Sí (GUI → Módulos) | No |
+  | Permisos `<mod>.*` | Sí | No (o los del lanzador) |
+  | Tile / registro frontend | Sí | No |
+  | Credenciales por empresa | Vía `config/connections` | Puede no tenerlas (vía env global, p. ej. `MASCOTAS_API_URL`) |
+
+  Ejemplos: `mascotas` (endpoint global, sin conexión por empresa) y `peliculas` (sí tiene fila en
+  `modules`, sí tiene permiso `peliculas.read`, y su conexión **sí** se crea en la GUI).
 
 ---
 
@@ -759,6 +813,11 @@ sin pantallas propias. Para una misma operación, cada empresa puede tener **par
 distintos**. Lo dispara un **botón de un módulo de usuarios**, protegido con el permiso `read` de ese
 módulo. En los ejemplos: `<sis>` = `sap`, `<op>` = `cliente.crear`, `<mod>` = módulo de usuarios con el botón.
 
+> **Ejemplos reales en el repo:** `sap` (este anexo, con jobs + worker + estrategias por empresa) y
+> `mascotas` (una única consulta a un servicio global `MASCOTAS_API_URL`, sin conexión por empresa,
+> lanzado desde un botón del panel superadmin con `JwtAuthGuard` + `SuperAdminGuard`). El segundo está
+> montado paso a paso en [DESDE-CERO-GUIDE.md](DESDE-CERO-GUIDE.md).
+
 ### B.1 Piezas y flujo
 
 ```
@@ -1069,3 +1128,14 @@ módulo en `launchers`. Las estrategias y la configuración no se tocan.
 7. **Aislamiento por empresa en dos capas** (RLS + filtro por `@CurrentTenant()`), nunca solo una.
 8. **Un `path` en BD siempre debe existir en el registro frontend.** El formulario lo impone en altas; para
    datos antiguos, revisar el badge "ruta inexistente".
+9. **`module` de la conexión ≠ `system` de la conexión.** `system` identifica el sistema externo
+   (`api`, `sap`); `module` identifica qué módulo de la app la consume (`peliculas`). El plugin de código
+   se registra con la clave `system.module` (ver [§0.4](#04-módulos-con-conexiones-sistemas-externos-y-estrategias)).
+10. **Una conexión nueva solo se activa tras probarla.** Cambiar URL, credenciales, entorno o
+    `settings` no operativo invalida la prueba; `settings.strategy` es **no operativo**: cambiarlo obliga
+    a probar de nuevo. Detalle en [CONECTIONS-GUIDE.md](CONECTIONS-GUIDE.md).
+11. **`baseUrl` admite `http` y `https`.** `https` es obligatorio en producción; `http` existe para
+    mocks/entornos locales. El control real es la lista blanca `INTEGRATIONS_ALLOWED_HOSTS` (y el
+    egress-proxy en Docker), no el esquema.
+12. **Los dos módulos nuevos** (`peliculas`, `mascotas`) están descritos de cero en
+    [DESDE-CERO-GUIDE.md](DESDE-CERO-GUIDE.md): registro, plantillas, conexión, mock y prueba.
