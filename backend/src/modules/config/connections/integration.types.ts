@@ -11,10 +11,11 @@ export enum IntegrationEnvironment {
 }
 
 /**
- * Forma de autenticarse; decide qué lleva el blob cifrado:
- *   token    { token }
- *   basic    { username, password }   (Authorization: Basic en cada llamada)
- *   session  { username, password }   (login que devuelve una sesión, p. ej. SAP B1)
+ * Forma de autenticarse. Se conserva como metadato informativo: la plantilla del
+ * sistema (ConnectionTemplate) es quien declara qué secretos existen. Valores:
+ *   token    credencial de API
+ *   basic    usuario y contraseña (Authorization: Basic en cada llamada)
+ *   session  login que devuelve una sesión (p. ej. SAP B1)
  */
 export enum IntegrationAuthType {
   TOKEN = 'token',
@@ -22,4 +23,9 @@ export enum IntegrationAuthType {
   SESSION = 'session',
 }
 
-export type IntegrationCredentials = { token: string } | { username: string; password: string };
+/**
+ * Secretos de una conexión, como mapa clave→valor (contraseña, token, los que
+ * haga falta). Se guarda cifrado; los campos concretos los declara la plantilla
+ * del sistema (`secretFields`). No se limita a un solo secreto.
+ */
+export type IntegrationCredentials = Record<string, string>;

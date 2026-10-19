@@ -19,10 +19,16 @@ export class CredentialsCipherError extends Error {
 
 /**
  * AAD de una conexión: ata el blob cifrado a su fila. Un blob copiado a otra
- * empresa, sistema o entorno no se descifra (GCM rechaza el tag). Solo campos
- * que no cambian; un cambio de cualquiera exige volver a cargar la credencial.
+ * conexión no se descifra (GCM rechaza el tag). Usa el `id` (inmutable) para
+ * permitir varias conexiones con el mismo sistema/entorno en una empresa.
+ * `legacyAad` reproduce el formato anterior (company:system:environment) para
+ * poder descifrar blobs guardados antes de existir el `id` en el AAD.
  */
-export function buildAad(c: { companyId: string; system: string; environment: string }): string {
+export function buildAad(c: { companyId: string; id: string }): string {
+  return `${c.companyId}:${c.id}`;
+}
+
+export function legacyAad(c: { companyId: string; system: string; environment: string }): string {
   return `${c.companyId}:${c.system}:${c.environment}`;
 }
 

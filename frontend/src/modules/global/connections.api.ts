@@ -5,47 +5,79 @@ import { httpClient } from '../../shared/api/httpClient';
 export type IntegrationSystem = string;
 export type IntegrationEnvironment = 'production' | 'test';
 export type TestStatus = 'ok' | 'auth' | 'transient' | 'definitive';
+export type ConnectionAuthType = 'token' | 'basic' | 'session';
+export type ConnectionFieldType = 'text' | 'number' | 'boolean' | 'json' | 'select' | 'multiselect';
 
-export const OWNABLE_FIELDS: { key: string; label: string }[] = [
-  { key: 'fullName', label: 'Nombre' },
-  { key: 'commercialName', label: 'Nombre comercial' },
-  { key: 'legalName', label: 'Razón social' },
-  { key: 'billingEmail', label: 'Correo de facturación' },
-  { key: 'phone', label: 'Teléfono' },
-  { key: 'email', label: 'Correo' },
-  { key: 'status', label: 'Estado (activo/inactivo)' },
-];
+/** Un campo NO secreto de `settings` declarado por la plantilla del sistema. */
+export interface ConnectionField {
+  key: string;
+  label?: string;
+  type?: ConnectionFieldType;
+  required?: boolean;
+  options?: string[];
+  default?: unknown;
+  /** true = cambiarlo no obliga a volver a probar la conexión. */
+  operational?: boolean;
+}
+
+/** Un secreto de la conexión (valor cifrado). */
+export interface ConnectionSecretField {
+  key: string;
+  label?: string;
+  required?: boolean;
+}
+
+/** Plantilla global de un sistema: qué campos y secretos tiene una conexión. */
+export interface ConnectionTemplate {
+  id: string;
+  systemKey: IntegrationSystem;
+  label: string;
+  settingsFields: ConnectionField[];
+  secretFields: ConnectionSecretField[];
+  authType: ConnectionAuthType | null;
+  enabled: boolean;
+}
+
+export interface ConnectionTemplateInput {
+  systemKey: IntegrationSystem;
+  label: string;
+  settingsFields: ConnectionField[];
+  secretFields: ConnectionSecretField[];
+  authType?: ConnectionAuthType;
+  enabled?: boolean;
+}
+
+export interface SystemOption {
+  key: IntegrationSystem;
+  label: string;
+  /** true = hay adaptador de código: se puede probar la conexión. */
+  testable: boolean;
+}
 
 export interface ConnectionsMeta {
   enabled: boolean;
-  /** Sistemas con adaptador registrado (p. ej. `['sap']`). */
-  systems: IntegrationSystem[];
+  systems: SystemOption[];
   environments: IntegrationEnvironment[];
-  authTypes: ('token' | 'basic' | 'session')[];
+  authTypes: ConnectionAuthType[];
 }
 
-/** GET /clients/sync/meta: estrategias de sincronización registradas. */
-export interface SyncMeta {
-  strategies: { system: IntegrationSystem; key: string }[];
-}
-
-export interface ConnectionSettings {
-  strategy: string;
-  companyDb?: string;
-  pageSize?: number;
-  schedule?: { everyMinutes: number } | null;
-  ownedFields?: string[];
-  [key: string]: unknown;
+/** Módulo de la app que consume una conexión (`modules.module`). */
+export interface ModuleOption {
+  module: string;
+  label: string;
 }
 
 export interface Connection {
   id: string;
   system: IntegrationSystem;
+  module: string;
+  label: string;
   environment: IntegrationEnvironment;
   enabled: boolean;
-  authType: 'token' | 'basic' | 'session';
+  authType: ConnectionAuthType;
   baseUrl: string;
-  settings: ConnectionSettings;
+  settings: Record<string, unknown>;
+  templateId: string | null;
   hasCredentials: boolean;
   credentialsUpdatedAt: string | null;
   expiresAt: string | null;
@@ -55,13 +87,18 @@ export interface Connection {
 }
 
 export interface ConnectionInput {
-  enabled?: boolean;
-  authType: Connection['authType'];
+  label: string;
+  module: string;
+  system: IntegrationSystem;
+  environment: IntegrationEnvironment;
+  templateId?: string;
+  authType?: ConnectionAuthType;
   baseUrl: string;
-  settings: ConnectionSettings;
-  /** Ausente = se conservan las guardadas. */
-  credentials?: { username?: string; password?: string; token?: string };
+  settings: Record<string, unknown>;
+  /** Ausente = se conservan las guardadas (al editar). */
+  credentials?: Record<string, string>;
   expiresAt?: string | null;
+  enabled?: boolean;
 }
 
 export interface SyncResult {
@@ -89,21 +126,34 @@ export interface IntegrationJob {
   createdAt: string;
 }
 
+/** GET /clients/sync/meta: estrategias de sincronización registradas. */
+export interface SyncMeta {
+  strategies: { system: IntegrationSystem; key: string }[];
+}
+
 const connBase = (companyId: string) => `/connections/companies/${companyId}`;
 
 export const connectionsApi = {
   meta: () => httpClient.get<ConnectionsMeta>('/connections/meta').then((r) => r.data),
   list: (companyId: string) => httpClient.get<Connection[]>(connBase(companyId)).then((r) => r.data),
-  save: (companyId: string, system: IntegrationSystem, env: IntegrationEnvironment, input: ConnectionInput) =>
-    httpClient.put<Connection>(`${connBase(companyId)}/${system}/${env}`, input).then((r) => r.data),
-  remove: (companyId: string, system: IntegrationSystem, env: IntegrationEnvironment) =>
-    httpClient.delete(`${connBase(companyId)}/${system}/${env}`).then((r) => r.data),
-  test: (companyId: string, system: IntegrationSystem, env: IntegrationEnvironment) =>
-    httpClient.post<{ status: TestStatus; message: string }>(`${connBase(companyId)}/${system}/${env}/test`).then((r) => r.data),
+  create: (companyId: string, input: ConnectionInput) => httpClient.post<Connection>(connBase(companyId), input).then((r) => r.data),
+  update: (companyId: string, id: string, input: Partial<ConnectionInput>) =>
+    httpClient.put<Connection>(`${connBase(companyId)}/${id}`, input).then((r) => r.data),
+  remove: (companyId: string, id: string) => httpClient.delete(`${connBase(companyId)}/${id}`).then((r) => r.data),
+  test: (companyId: string, id: string) =>
+    httpClient.post<{ status: TestStatus; message: string }>(`${connBase(companyId)}/${id}/test`).then((r) => r.data),
+};
+
+export const templatesApi = {
+  list: () => httpClient.get<ConnectionTemplate[]>('/connections/templates').then((r) => r.data),
+  create: (input: ConnectionTemplateInput) => httpClient.post<ConnectionTemplate>('/connections/templates', input).then((r) => r.data),
+  update: (id: string, input: ConnectionTemplateInput) =>
+    httpClient.put<ConnectionTemplate>(`/connections/templates/${id}`, input).then((r) => r.data),
+  remove: (id: string) => httpClient.delete(`/connections/templates/${id}`).then((r) => r.data),
 };
 
 export const syncApi = {
-  /** Estrategias registradas para ofrecer en el formulario de conexión. */
+  /** Estrategias registradas por sistema. */
   meta: () => httpClient.get<SyncMeta>('/clients/sync/meta').then((r) => r.data),
   keysFor: (meta: SyncMeta | null, system: IntegrationSystem) =>
     (meta?.strategies ?? []).filter((s) => s.system === system).map((s) => s.key),
