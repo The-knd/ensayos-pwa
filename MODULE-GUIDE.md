@@ -5,7 +5,11 @@
 > El paradigma y la API del sistema de módulos están en [MODULE-SYSTEM.md](MODULE-SYSTEM.md);
 > credenciales y procedimientos de prueba en [TEST-GUIDE.md](TEST-GUIDE.md).
 > Para módulos **de sistema** (sin pantallas, con comportamiento por empresa y lanzables desde un
-> módulo de usuarios) ver el [Anexo B](#anexo-b--módulos-de-sistema).
+> módulo de usuarios) ver el [Anexo B](#anexo-b--módulos-de-sistema); si el módulo habla con un
+> sistema externo con credenciales por empresa, ver el
+> [Anexo C](#anexo-c--módulo-integrado-sistema-externo-con-conexión-por-empresa).
+> Ejemplo práctico completo (módulo GUI integrado + módulo oculto): `PELICULAS-MASCOTAS-GUIDE.md`
+> (sin trackear, en la rama `pruebas-modulos`).
 
 ---
 
@@ -27,6 +31,11 @@ RBAC       profile_permissions  ← Perfiles → Permisos
 
 Ruta de una petición: `navegador → Vite (dev) / proxy del host (prod) → Kong :8000 (/api, JWT) →
 NestJS :3000 (/api/<module>/..., @Permissions)`. El backend **no publica puertos**: solo se llega por Kong.
+
+> **Variantes del proceso**: si el módulo **no tiene pantalla** (oculto o de sistema), no pasa por
+> frontend ni por Configuración → Módulos — ver el [Anexo B](#anexo-b--módulos-de-sistema). Si el
+> módulo consume un **sistema externo** con credenciales por empresa — ver el
+> [Anexo C](#anexo-c--módulo-integrado-sistema-externo-con-conexión-por-empresa).
 
 ### Nombres que deben coincidir
 
@@ -80,13 +89,27 @@ NestJS :3000 (/api/<module>/..., @Permissions)`. El backend **no publica puertos
 | 7 | Publicar / variantes *(opcional)* | GUI (superadmin) | Distribución entre empresas |
 | 8 | Verificar end-to-end | Navegador + `curl` vía Kong | `403` sin permiso, `200` y tile visible con permiso |
 
+### 2.1 Tipos de módulo
+
+El flujo de la tabla es para un **módulo GUI**; los otros dos tipos se desvían en pasos puntuales:
+
+| | Módulo GUI | Módulo oculto (sistema simple) | Módulo integrado (GUI + sistema externo) |
+| --- | --- | --- | --- |
+| Ejemplos | `credits`, `catalog`, `proveedores` | `clients.sync` | `sap` (adaptador), `peliculas` (ejemplo) |
+| Creación | Pasos 1–6 | Solo backend + fila en `HIDDEN_SYSTEM_MODULES` ([system-modules.ts](backend/src/commons/system-modules.ts)) | GUI (Pasos 1–6) + adaptador con plugin y estrategias ([Anexo C](#anexo-c--módulo-integrado-sistema-externo-con-conexión-por-empresa)) |
+| Configuración | GUI: Configuración → Módulos | Ninguna (no se registra en la GUI) | Plantilla de sistema + conexión por empresa (superadmin, Configuración global → Conexiones) |
+| Conexión | No aplica | No aplica | Credenciales cifradas por empresa; Guardar → Probar → Activar |
+| Parametrización | `module_variants.config` (UI) / feature flags | Solo código | `settings.strategy` y campos de la plantilla + credenciales (C.4) |
+| Permisos | `<module>.<action>`, creados al registrar el módulo (Paso 5) | Creados al arrancar por `RbacService.onModuleInit` (Anexo B.0) | Los del módulo GUI + los de la conexión (superadmin) |
+| Dónde se ve | Home / FAB / Sidebar | Solo en Perfiles → Permisos | Tile del módulo + tarjeta en Conexiones |
+
 ---
 
 ## 3. Paso 1 — Definir el módulo y sus operaciones
 
 Es el paso que condiciona todo lo demás. Al registrar el módulo, el backend crea **un permiso por
 operación** con el formato `<module>.<action>` (`registerModulePermissions`,
-[rbac.service.ts:40](backend/src/modules/rbac/rbac.service.ts#L40)).
+[rbac.service.ts:48](backend/src/modules/rbac/rbac.service.ts#L48)).
 
 ### 3.1 Convenciones
 
@@ -174,7 +197,8 @@ Dos tipos de endpoint:
 
 1. **`GET <module>/context`** — sin `@Permissions`. Devuelve los permisos del usuario con prefijo
    `<module>.`. Lo usan `RequirePerm`, el Home (visibilidad del tile) y las páginas (botones).
-   **Es obligatorio**: sin él, el frontend trata al usuario como sin permisos.
+   **Es obligatorio en módulos GUI**: sin él, el frontend trata al usuario como sin permisos.
+   (Un módulo oculto no tiene frontend y no lo necesita.)
 2. **Endpoints de negocio** — cada uno con `@Permissions('<module>.<action>')`.
 
 ```ts
@@ -437,6 +461,12 @@ Antes del Paso 6, `/proveedores` muestra la página de **acceso denegado** (no 4
 
 Sin redeploy ni SQL.
 
+> **No aplica a módulos ocultos**: no tienen pantalla ni tile; registrarlos aquí dejaría una entrada
+> con "ruta inexistente". Sus permisos se crean solos al arrancar (Anexo B.0) y se asignan en el
+> Paso 6. **Módulos integrados**: regístralos **antes** de crear su conexión por empresa, porque el
+> formulario de conexión exige elegir el módulo de la app que la consume (dropdown desde
+> `GET /config/modules`).
+
 | Rol | Dónde | Componente |
 | --- | --- | --- |
 | Admin de empresa | Configuración → Módulos | `ModulesManagement` (`mode: 'company'`) |
@@ -481,13 +511,20 @@ Tras el Paso 5 el módulo existe, pero **nadie** lo ve (ni el admin).
    - Superadmin: gestiona perfiles de todas las empresas. Admin: solo los de su empresa.
    - Los perfiles `admin`/`vendedor` son **por empresa**: asignar en Empresa 1 no afecta a Empresa 2.
 2. **Caché**:
-   - Backend: asignar o quitar un permiso **invalida al momento** la caché Redis de todos los usuarios del
-     perfil (`invalidateProfileCache`). El TTL de 120 s
-     ([rbac.service.ts:94](backend/src/modules/rbac/rbac.service.ts#L94)) solo aplica a cambios que no pasan
+    - Backend: asignar o quitar un permiso **invalida al momento** la caché Redis de todos los usuarios del
+      perfil (`invalidateProfileCache`). El TTL de 120 s
+      ([rbac.service.ts:102](backend/src/modules/rbac/rbac.service.ts#L102)) solo aplica a cambios que no pasan
      por ahí, p. ej. el **superadmin** recibe los permisos *nuevos* del catálogo cuando expira su caché.
    - Frontend: `moduleContexts` se guarda en memoria durante la sesión. El usuario afectado debe
      **recargar la página** (F5) o volver a iniciar sesión para ver el cambio.
 3. El superadmin tiene todos los permisos del catálogo por su perfil; no necesita asignaciones.
+4. **Perfiles globales de sistema** (sin empresa): se crean y administran en Configuración global →
+   pestaña **Perfiles** (`GlobalProfilesManagement`, solo superadmin; endpoints
+   `GET/POST/PATCH/DELETE /profiles/global` con `SuperAdminGuard` + permisos `profiles.*`). Sirven
+   para usuarios globales (p. ej. operadores del portal), que en el bootstrap reciben
+   `scope: 'system'` sin empresa ni tiles ([me.controller.ts](backend/src/modules/auth/me.controller.ts)).
+   Los permisos de módulos ocultos (`clients.sync.read`, `clients.sync.update`, …) se asignan igual
+   que cualquier otro: aquí, o en Perfiles → Permisos de una empresa.
 
 ---
 
@@ -580,6 +617,11 @@ curl -s -b /tmp/cj -X POST $API/proveedores/items -H 'Content-Type: application/
 | `400 path debe ser una ruta interna` | `path` con espacios, `//`, protocolo o query string |
 | Error "Registro de módulos inválido" al arrancar el front | Regla de §6.3 incumplida (el mensaje dice cuál) |
 | `401` vía Kong pero funciona en `:3000` | Cookie `access_token` ausente o expirada: Kong valida el JWT antes que Nest |
+| `Sistema no soportado: <system>` | No hay `ConnectionPlugin` registrado para ese sistema (backend sin reiniciar o falta el registrar), o el sistema no está en `connection_systems` |
+| `No hay conexión configurada` | La empresa no tiene conexión **activa** de Producción para ese sistema: crear → Probar → Activar |
+| El dropdown "Módulo" del formulario de conexión no ofrece mi módulo | Falta el registro del módulo GUI (Paso 5); la lista sale de `GET /config/modules` |
+| El formulario de conexión rechaza `http://…` | En dev se admite en `ConnectionForm.tsx` (revertir para prod); la seguridad real es la allowlist `INTEGRATIONS_ALLOWED_HOSTS` |
+| Mi endpoint de módulo oculto da `403` a todos | El permiso `<recurso>.<acción>` no está asignado (los de `HIDDEN_SYSTEM_MODULES` se crean sin otorgar); asignar y recargar (F5) |
 
 ---
 
@@ -755,9 +797,44 @@ export function ProveedoresPage() {
 ## Anexo B — Módulos de sistema
 
 Un **módulo de sistema** ejecuta operaciones internas (integración con SAP, sincronizaciones, procesos)
-sin pantallas propias. Para una misma operación, cada empresa puede tener **parámetros y lógica
-distintos**. Lo dispara un **botón de un módulo de usuarios**, protegido con el permiso `read` de ese
-módulo. En los ejemplos: `<sis>` = `sap`, `<op>` = `cliente.crear`, `<mod>` = módulo de usuarios con el botón.
+sin pantallas propias. Hay **dos sabores**, según lo que necesites:
+
+- **B.0 Módulo oculto simple** — solo endpoints protegidos por permisos propios, sin UI, sin fila en
+  `modules`, sin jobs ni configuración por empresa (p. ej. `clients.sync`).
+- **B.1–B.9 Módulo de sistema con integración** — configuración por empresa, credenciales,
+  estrategias, jobs y worker (p. ej. SAP). Si además usa el sistema de conexiones por empresa, se
+  apoya en el [Anexo C](#anexo-c--módulo-integrado-sistema-externo-con-conexión-por-empresa).
+
+### B.0 Módulo oculto simple (`HIDDEN_SYSTEM_MODULES`)
+
+Para un módulo que solo expone endpoints internos protegidos por permisos propios basta el catálogo
+de módulos ocultos ([system-modules.ts](backend/src/commons/system-modules.ts)):
+
+```ts
+export const HIDDEN_SYSTEM_MODULES: { resource: string; actions: string[] }[] = [
+  { resource: 'clients.sync', actions: ['read', 'update'] },
+];
+```
+
+1. Añade tu recurso: `{ resource: '<recurso>', actions: [...] }`. El recurso es el prefijo de
+   permisos (`<recurso>.<action>`).
+2. Protege los endpoints con `@Permissions('<recurso>.<action>')`. El controller puede vivir dentro
+   del módulo que los dispara, como `ClientSyncController` dentro de `clients`.
+3. Al arrancar, `RbacService.onModuleInit`
+   ([rbac.service.ts:25](backend/src/modules/rbac/rbac.service.ts#L25)) registra los permisos en el
+   catálogo, idempotente y **sin otorgar a nadie** (el superadmin accede por bypass).
+4. Se asignan a mano: Perfiles → Permisos (perfil de empresa) o Configuración global → Perfiles
+   (perfil global de sistema). El usuario recarga (F5) y listo.
+
+> **Caso real**: `clients.sync` antes usaba `clients.read`/`clients.update`, así que todo admin con
+> `clients.*` arrastraba el disparo de sincronizaciones. Se separó en el módulo oculto con códigos
+> `clients.sync.read`/`clients.sync.update` (`ClientSyncController`): hay que asignarlos
+> explícitamente a los perfiles que sincronizan.
+
+En las secciones siguientes (`B.1–B.9`), un **módulo de sistema con integración** ejecuta operaciones
+con **parámetros y lógica distintos por empresa**, lanzadas desde un **botón de un módulo de usuarios**
+protegido con el permiso `read` de ese módulo. En los ejemplos: `<sis>` = `sap`, `<op>` =
+`cliente.crear`, `<mod>` = módulo de usuarios con el botón.
 
 ### B.1 Piezas y flujo
 
@@ -1055,6 +1132,68 @@ módulo en `launchers`. Las estrategias y la configuración no se tocan.
 
 ---
 
+## Anexo C — Módulo integrado: sistema externo con conexión por empresa
+
+Cuando el módulo habla con un sistema externo que requiere credenciales **distintas por empresa**
+(SAP u otra API), las credenciales y la parametrización no van en variables de entorno ni en
+`module_variants`: van en el sistema de **conexiones** (`config/connections`). Guía de uso completa
+en [CONECTIONS-GUIDE.md](CONECTIONS-GUIDE.md) y ejemplo vivo en `PELICULAS-MASCOTAS-GUIDE.md`.
+
+### C.1 Piezas
+
+| Pieza | Dónde | Qué es |
+| --- | --- | --- |
+| Sistema | `connection_systems` (BD) | Clave del sistema externo (`sap`, `peliculas`, …). Alta por migración idempotente o `POST /api/connections/systems`; sin fila, la UI no lo ofrece |
+| Plantilla | UI: Configuración global → Conexiones → Plantillas | Campos de `settings` (tipo, obligatorio, **operativo**) y secretos del sistema; globales |
+| Adaptador | `ConnectionPlugin` + `ConnectionPluginsRegistry` ([connection-plugins.ts](backend/src/modules/config/connections/connection-plugins.ts)) | `system`, `validateSettings(settings)`, `test(connection, credentials)`. Se registra con `onModuleInit` (patrón `SapIntegrationRegistrar`). Sin plugin, el sistema se ve en la UI pero no valida ni prueba |
+| Estrategias | Registry propio del módulo (patrón `ClientSyncStrategyRegistry`) | Variantes de comportamiento; la empresa la elige en `settings.strategy` de su conexión y se valida **al guardar** |
+| Conexión | UI: Configuración global → Conexiones → Conexiones Empresas | Por empresa: URL, settings, credenciales cifradas (AES-256-GCM, de solo escritura). La columna `module` etiqueta al módulo consumidor (dropdown desde `GET /config/modules`) |
+
+### C.2 Runtime
+
+```ts
+const { connection, credentials } = await this.connections.loadForUse(
+  companyId, '<sistema>', IntegrationEnvironment.PRODUCTION,
+);
+// → conexión ACTIVA más antigua de (empresa, sistema) + credenciales descifradas en memoria
+const strategy = this.strategies.resolve('<sistema>', connection.settings.strategy);
+```
+
+- `loadForUse` ([connections.service.ts:232](backend/src/modules/config/connections/connections.service.ts#L232)):
+  RLS por empresa; lanza `IntegrationError` "No hay conexión configurada" si no hay activa; las
+  credenciales solo se descifran para usar y nunca salen del servicio.
+- **Ciclo de vida**: Guardar (queda inactiva) → **Probar** (ejecuta `test` del plugin) → **Activar**.
+  Cambiar URL, sistema, credenciales o ajustes no-operativos la desactiva y obliga a re-probar; los
+  campos marcados **Operativo** en la plantilla no.
+- Si hay varias activas del mismo sistema, gana la más antigua: crea una sola conexión de Producción
+  por sistema y empresa.
+
+### C.3 Entorno y red (integraciones)
+
+- `INTEGRATIONS_ENABLED=true`, `CREDENTIALS_KEY` (32 bytes base64), `INTEGRATIONS_ALLOWED_HOSTS`
+  (host[:puerto], admite wildcards) — validadas en
+  [env.validation.ts](backend/src/commons/config/env.validation.ts).
+- El backend solo sale a Internet por el egress-proxy (squid): el dominio va en
+  `egress-proxy/squid.conf` y `*_HTTPS_PROXY` apunta al proxy (en `docker-compose.yml` esta variable
+  **pisa** `backend/.env`).
+- Host local en Linux: `extra_hosts: ["host.docker.internal:host-gateway"]` en `backend` y
+  `egress-proxy`, y `host.docker.internal:<puerto>` en la allowlist.
+- Cambios de `.env` del backend **no** se recargan con `restart` ni con `--watch`:
+  `docker compose up -d --force-recreate backend`.
+- `http://` (sin TLS) solo en desarrollo: la UI exige `https://` por defecto.
+
+### C.4 Cuándo va cada parametrización
+
+| Qué cambia por empresa | Dónde |
+| --- | --- |
+| Lógica de lectura/mapeo (código) | Estrategia nueva + `settings.strategy` en su conexión |
+| Datos operativos (almacén, series, pageSize) | Campos `settings` de la plantilla (márcalos **Operativos** si no deben obligar a re-probar) |
+| Credenciales | Secretos de la conexión (cifrados, write-only) |
+| Comportamiento de UI del módulo | `module_variants.config` (Paso 7) |
+| On/off de funcionalidades | Feature flags por empresa |
+
+---
+
 ## Notas y reglas
 
 1. **Seguridad siempre en el backend.** `RequirePerm`, `Can` y la visibilidad de tiles son UX;
@@ -1069,3 +1208,7 @@ módulo en `launchers`. Las estrategias y la configuración no se tocan.
 7. **Aislamiento por empresa en dos capas** (RLS + filtro por `@CurrentTenant()`), nunca solo una.
 8. **Un `path` en BD siempre debe existir en el registro frontend.** El formulario lo impone en altas; para
    datos antiguos, revisar el badge "ruta inexistente".
+9. **Un módulo sin pantalla no se registra en Configuración → Módulos**: sus permisos van en
+   `HIDDEN_SYSTEM_MODULES` (Anexo B.0) y se crean solos al arrancar, sin otorgar.
+10. **Las credenciales de sistemas externos nunca van en `.env` ni en `module_variants`**: van en la
+    conexión de la empresa, cifradas (Anexo C).
