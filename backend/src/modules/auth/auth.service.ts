@@ -1,10 +1,11 @@
-import { Injectable, UnauthorizedException, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Response, Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes, randomUUID } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { User, UserStatus } from '../users/entities/user.entity';
 import { Device } from './entities/device.entity';
@@ -213,6 +214,24 @@ export class AuthService {
     res.clearCookie('access_token');
     res.clearCookie('refresh_token', { path: '/api/auth/refresh' });
     res.clearCookie('csrf_token');
+    return { success: true };
+  }
+
+  /**
+   * Cambio de contraseña propio: valida la actual, guarda la nueva (hash) y
+   * NO cierra la sesión actual. Se rechaza si la "nueva" es idéntica a la
+   * actual para dar un mensaje claro al usuario.
+   */
+  async changeOwnPassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.userRepo.findOneByOrFail({ id: userId });
+    const ok = user.passwordHash ? await bcrypt.compare(currentPassword, user.passwordHash) : false;
+    if (!ok) throw new UnauthorizedException('La contraseña actual es incorrecta');
+    if (await bcrypt.compare(newPassword, user.passwordHash || '')) {
+      throw new BadRequestException('La nueva contraseña debe ser distinta a la actual');
+    }
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.userRepo.save(user);
+    this.logger.audit('auth.password.changed', { actor: userId });
     return { success: true };
   }
 

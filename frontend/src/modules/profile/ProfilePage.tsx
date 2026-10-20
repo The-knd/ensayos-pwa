@@ -17,6 +17,12 @@ export function ProfilePage() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
+  // Cambio de contraseña propio
+  const [pwdForm, setPwdForm] = useState({ current: '', next: '', confirm: '' });
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [pwdError, setPwdError] = useState('');
+
   const name = bootstrap?.user.name || '';
   const email = bootstrap?.user.email || '';
   const companyName = bootstrap?.company?.name || '';
@@ -92,6 +98,36 @@ export function ProfilePage() {
     }
   };
 
+  const changePassword = async () => {
+    setPwdMsg('');
+    setPwdError('');
+    if (pwdForm.next.length < 8) {
+      setPwdError('La nueva contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+    if (pwdForm.next !== pwdForm.confirm) {
+      setPwdError('Las contraseñas nuevas no coinciden');
+      return;
+    }
+    if (pwdForm.next === pwdForm.current) {
+      setPwdError('La nueva contraseña debe ser distinta a la actual');
+      return;
+    }
+    setPwdBusy(true);
+    try {
+      await httpClient.patch('/auth/password', {
+        currentPassword: pwdForm.current,
+        newPassword: pwdForm.next,
+      });
+      setPwdMsg('Contraseña actualizada correctamente.');
+      setPwdForm({ current: '', next: '', confirm: '' });
+    } catch (err: any) {
+      setPwdError(err?.response?.data?.message?.message || err?.response?.data?.message || 'No se pudo cambiar la contraseña');
+    } finally {
+      setPwdBusy(false);
+    }
+  };
+
   return (
     <div className="profile-page">
       <div className="profile-head">
@@ -122,6 +158,54 @@ export function ProfilePage() {
             <strong>Autenticación biométrica disponible</strong>
             <p>Registra una huella, rostro o llave de seguridad para iniciar sesión sin contraseña.</p>
           </div>
+        </div>
+
+        <h3 className="section-title">Cambiar contraseña</h3>
+        <div className="info-card" style={{ padding: 16 }}>
+          <div className="field">
+            <label>Contraseña actual</label>
+            <input
+              className="inp"
+              type="password"
+              value={pwdForm.current}
+              onChange={(e) => setPwdForm({ ...pwdForm, current: e.target.value })}
+              placeholder="Tu contraseña actual"
+            />
+          </div>
+          <div className="field">
+            <label>Nueva contraseña</label>
+            <input
+              className="inp"
+              type="password"
+              value={pwdForm.next}
+              onChange={(e) => setPwdForm({ ...pwdForm, next: e.target.value })}
+              placeholder="Mínimo 8 caracteres"
+            />
+          </div>
+          <div className="field">
+            <label>Confirmar nueva contraseña</label>
+            <input
+              className="inp"
+              type="password"
+              value={pwdForm.confirm}
+              onChange={(e) => setPwdForm({ ...pwdForm, confirm: e.target.value })}
+              placeholder="Repetir nueva contraseña"
+            />
+          </div>
+          {pwdMsg && (
+            <div className="error-msg" style={{ background: 'var(--green-soft)', color: 'var(--green-deep)', borderColor: 'rgba(62,155,97,0.2)' }}>
+              {pwdMsg}
+            </div>
+          )}
+          {pwdError && <div className="error-msg">{pwdError}</div>}
+          <button
+            className="btn btn-primary"
+            onClick={changePassword}
+            disabled={pwdBusy}
+            style={{ opacity: pwdBusy ? 0.6 : 1, marginTop: 8 }}
+          >
+            {pwdBusy ? 'Guardando…' : 'Actualizar contraseña'}
+          </button>
         </div>
 
         <h3 className="section-title">Dispositivos</h3>

@@ -38,6 +38,19 @@ export class UsersService {
     });
   }
 
+  /**
+   * Listado global (panel de configuración global del superadmin): todos los
+   * usuarios de todas las empresas, con empresa y perfil resueltos para pintar
+   * la lista. Nunca expone passwordHash.
+   */
+  findAllGlobal() {
+    return this.repo.find({
+      relations: ['company', 'profile'],
+      select: ['id', 'email', 'fullName', 'status', 'profileId', 'createdAt'],
+      order: { email: 'ASC' },
+    });
+  }
+
   async findOne(id: string, companyId: string | null) {
     const user = await this.repo.findOne({ where: { id, companyId: companyId ?? IsNull() } });
     if (!user) throw new NotFoundException();
@@ -79,13 +92,30 @@ export class UsersService {
     return saved;
   }
 
-  async toggleStatus(id: string, companyId: string | null) {
-    const user = await this.repo.findOne({ where: { id, companyId: companyId ?? IsNull() } });
+  async toggleStatus(id: string, companyId: string | null, unrestricted = false) {
+    const user = await this.repo.findOne({
+      where: unrestricted ? { id } : { id, companyId: companyId ?? IsNull() },
+    });
     if (!user) throw new NotFoundException();
     user.status = user.status === UserStatus.ACTIVE ? UserStatus.INACTIVE : UserStatus.ACTIVE;
     const saved = await this.repo.save(user);
     await this.invalidateAccess(id);
     return saved;
+  }
+
+  /**
+   * Reset de contraseña hecho por administración (no requiere la actual).
+   * Con `unrestricted` (superadmin desde el panel global) se salta el filtro
+   * de empresa; el resto de admins solo puede resetear usuarios propios.
+   */
+  async resetPassword(id: string, companyId: string | null, newPassword: string, unrestricted = false) {
+    const user = await this.repo.findOne({
+      where: unrestricted ? { id } : { id, companyId: companyId ?? IsNull() },
+    });
+    if (!user) throw new NotFoundException();
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.repo.save(user);
+    return { success: true };
   }
 
   async remove(id: string, companyId: string | null) {

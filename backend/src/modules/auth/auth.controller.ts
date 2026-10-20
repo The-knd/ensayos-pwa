@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SwitchCompanyDto } from './dto/switch-company.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import {
   PasskeyCheckDto,
   PasskeyLoginOptionsDto,
@@ -119,6 +120,14 @@ export class AuthController {
       dto.companyId ?? null,
       res,
     );
+  }
+
+  // --- Cambio de contraseña propio (desde el perfil del usuario) ---
+
+  @Patch('password')
+  @UseGuards(JwtAuthGuard)
+  changeOwnPassword(@CurrentUser() user, @Body() dto: ChangePasswordDto) {
+    return this.authService.changeOwnPassword(user.sub, dto.currentPassword, dto.newPassword);
   }
 
   // --- Passkeys: registro (usuario autenticado añade un dispositivo) ---

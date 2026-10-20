@@ -5,6 +5,7 @@ import { useAuth, CompanySummary } from '../auth/AuthContext';
 import { ModulesManagement } from '../config/ModulesManagement';
 import { SharedClientsManagement } from './SharedClientsManagement';
 import { ConnectionsManagement } from './ConnectionsManagement';
+import { GlobalUsersManagement } from './GlobalUsersManagement';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
 
 interface ListCompany extends CompanySummary {
@@ -14,6 +15,7 @@ interface ListCompany extends CompanySummary {
 
 const TABS = [
   { id: 'companies', label: 'Empresas' },
+  { id: 'users', label: 'Usuarios' },
   { id: 'modules', label: 'Módulos' },
   { id: 'clients', label: 'Clientes globales' },
   { id: 'connections', label: 'Conexiones' },
@@ -92,7 +94,7 @@ export function SuperAdminGlobalConfigPage() {
       <div className="s2-head">
         <h1 className="page-title">Configuración global</h1>
         <p className="lead below">
-          Creá empresas, configurá sus datos, administrá los módulos, los clientes globales y las conexiones con sistemas externos de la plataforma.
+          Creá empresas, administrá usuarios, módulos, clientes globales y conexiones con sistemas externos de la plataforma.
           <button
             onClick={async () => { await exitCompany(); navigate('/home'); }}
             style={{ marginLeft: 12, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
@@ -175,6 +177,8 @@ export function SuperAdminGlobalConfigPage() {
             ))}
           </div>
         )}
+
+        {tab === 'users' && <GlobalUsersManagement />}
 
         {tab === 'modules' && <ModulesManagement mode="global" />}
 
