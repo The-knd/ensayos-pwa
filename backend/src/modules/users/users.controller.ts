@@ -8,6 +8,7 @@ import { UsersService } from './users.service';
 import { RbacService } from '../rbac/rbac.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SUPER_ADMIN_PROFILE_ID } from '../../commons/constants';
 
 @Controller('users')
@@ -36,6 +37,19 @@ export class UsersController {
   @Permissions('users.read')
   findAll(@CurrentUser() user, @CurrentTenant() companyId: string) {
     return this.service.findAll(companyId);
+  }
+
+  /**
+   * Listado global (panel de configuración global): todos los usuarios de
+   * todas las empresas. Reservado al superadmin.
+   */
+  @Get('global')
+  @Permissions('users.read')
+  findGlobal(@CurrentUser() user) {
+    if (user.profileId !== SUPER_ADMIN_PROFILE_ID) {
+      throw new ForbiddenException('Solo el superadmin puede ver el listado global de usuarios');
+    }
+    return this.service.findAllGlobal();
   }
 
   @Post()
@@ -81,10 +95,30 @@ export class UsersController {
   @Patch(':id/status')
   @Permissions('users.update')
   toggleStatus(
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user,
+    @Param('id', new ParseUUIDPipe()) id,
     @CurrentTenant() companyId: string | null,
   ) {
-    return this.service.toggleStatus(id, companyId);
+    // El superadmin (sesión global, companyId null) opera sin filtro de empresa.
+    const isSuperAdmin = user.profileId === SUPER_ADMIN_PROFILE_ID;
+    return this.service.toggleStatus(id, companyId, isSuperAdmin);
+  }
+
+  /**
+   * Reset de contraseña por administración (no requiere la actual).
+   * El superadmin puede resetear cualquier usuario (panel global); un admin
+   * solo los de su propia empresa.
+   */
+  @Patch(':id/password')
+  @Permissions('users.update')
+  resetPassword(
+    @CurrentUser() user,
+    @Param('id', new ParseUUIDPipe()) id,
+    @CurrentTenant() companyId: string | null,
+    @Body() dto: ResetPasswordDto,
+  ) {
+    const isSuperAdmin = user.profileId === SUPER_ADMIN_PROFILE_ID;
+    return this.service.resetPassword(id, companyId, dto.password, isSuperAdmin);
   }
 
   @Delete(':id')
