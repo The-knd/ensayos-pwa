@@ -64,6 +64,8 @@ export function ConnectionsManagement() {
   const [editingTpl, setEditingTpl] = useState<{ existing: ConnectionTemplate | null } | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [metaError, setMetaError] = useState('');
+  const [companiesError, setCompaniesError] = useState('');
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
   const [tplError, setTplError] = useState('');
@@ -72,17 +74,27 @@ export function ConnectionsManagement() {
 
   const reloadTemplates = useCallback(() => templatesApi.list().then(setTemplates).catch((err) => setError(errorMessage(err, 'No se pudieron cargar las plantillas'))), []);
 
-  useEffect(() => {
-    connectionsApi.meta().then(setMeta).catch((err) => setError(errorMessage(err, 'No se pudo cargar la configuración de conexiones')));
-    syncApi.meta().then(setSyncMeta).catch(() => undefined);
-    reloadTemplates();
+  const loadMeta = useCallback(() => {
+    setMetaError('');
+    connectionsApi.meta().then(setMeta).catch((err) => setMetaError(errorMessage(err, 'No se pudo cargar la configuración de conexiones')));
+  }, []);
+
+  const loadCompanies = useCallback(() => {
+    setCompaniesError('');
     httpClient
       .get('/config/companies')
       .then((res) => {
         const list: CompanyOption[] = (res.data || []).map((c: CompanyOption) => ({ id: c.id, name: c.name }));
         setCompanies(list);
       })
-      .catch(() => setError('No se pudieron cargar las empresas'));
+      .catch((err) => setCompaniesError(errorMessage(err, 'No se pudieron cargar las empresas')));
+  }, []);
+
+  useEffect(() => {
+    loadMeta();
+    syncApi.meta().then(setSyncMeta).catch(() => undefined);
+    reloadTemplates();
+    loadCompanies();
     httpClient
       .get('/config/modules')
       .then((res) => {
@@ -94,7 +106,7 @@ export function ConnectionsManagement() {
     return () => {
       if (pollRef.current) window.clearTimeout(pollRef.current);
     };
-  }, [reloadTemplates]);
+  }, [reloadTemplates, loadMeta, loadCompanies]);
 
   const loadCompany = useCallback(async (companyId: string) => {
     if (!companyId) {
@@ -256,6 +268,22 @@ export function ConnectionsManagement() {
         </div>
       )}
       {error && <p style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</p>}
+      {metaError && (
+        <p style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>
+          {metaError}{' '}
+          <button onClick={loadMeta} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+            Reintentar
+          </button>
+        </p>
+      )}
+      {companiesError && (
+        <p style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>
+          {companiesError}{' '}
+          <button onClick={loadCompanies} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+            Reintentar
+          </button>
+        </p>
+      )}
       {notice && <p style={{ color: 'var(--green-deep)', fontSize: 12, marginBottom: 8 }}>{notice}</p>}
 
       {tab === 'companies' ? (
@@ -289,6 +317,7 @@ export function ConnectionsManagement() {
       ) : (
         <TemplatesTab
           meta={meta}
+          metaError={metaError}
           templates={templates}
           busy={busy}
           onNew={() => {
@@ -304,32 +333,38 @@ export function ConnectionsManagement() {
       )}
 
       <Modal open={!!editingConn} onClose={() => busy !== 'save' && setEditingConn(null)}>
-        {editingConn && meta && (
-          <ConnectionForm
-            existing={editingConn.existing}
-            templates={templates}
-            modules={modules}
-            meta={meta}
-            busy={busy === 'save'}
-            error={formError}
-            onCancel={() => setEditingConn(null)}
-            onSave={saveConnection}
-          />
-        )}
+        {editingConn &&
+          (meta ? (
+            <ConnectionForm
+              existing={editingConn.existing}
+              templates={templates}
+              modules={modules}
+              meta={meta}
+              busy={busy === 'save'}
+              error={formError}
+              onCancel={() => setEditingConn(null)}
+              onSave={saveConnection}
+            />
+          ) : (
+            <MetaFallback metaError={metaError} onRetry={loadMeta} />
+          ))}
       </Modal>
 
       <Modal open={!!editingTpl} onClose={() => busy !== 'save-tpl' && setEditingTpl(null)}>
-        {editingTpl && meta && (
-          <ConnectionTemplateForm
-            existing={editingTpl.existing}
-            systems={meta.systems}
-            authTypes={meta.authTypes}
-            busy={busy === 'save-tpl'}
-            error={tplError}
-            onCancel={() => setEditingTpl(null)}
-            onSave={saveTemplate}
-          />
-        )}
+        {editingTpl &&
+          (meta ? (
+            <ConnectionTemplateForm
+              existing={editingTpl.existing}
+              systems={meta.systems}
+              authTypes={meta.authTypes}
+              busy={busy === 'save-tpl'}
+              error={tplError}
+              onCancel={() => setEditingTpl(null)}
+              onSave={saveTemplate}
+            />
+          ) : (
+            <MetaFallback metaError={metaError} onRetry={loadMeta} />
+          ))}
       </Modal>
 
       <Modal open={!!openJob} onClose={() => setOpenJob(null)}>
@@ -461,10 +496,7 @@ function CompaniesTab(props: CompaniesTabProps) {
                   + Agregar conexión
                 </button>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '18px 0 8px', gap: 10 }}>
-                  <h3 className="section-title" style={{ margin: 0 }}>
-                    Sincronizaciones de clientes
-                  </h3>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', margin: '18px 0 8px', gap: 10 }}>
                   <button
                     className="btn btn-primary"
                     style={smallBtn}
@@ -573,6 +605,7 @@ function ConnectionCard({ c, systemLabel, templateLabel, meta, busy, onTest, onE
 
 interface TemplatesTabProps {
   meta: ConnectionsMeta | null;
+  metaError: string;
   templates: ConnectionTemplate[];
   busy: string;
   onNew: () => void;
@@ -580,7 +613,7 @@ interface TemplatesTabProps {
   onRemove: (t: ConnectionTemplate) => void;
 }
 
-function TemplatesTab({ meta, templates, busy, onNew, onEdit, onRemove }: TemplatesTabProps) {
+function TemplatesTab({ meta, metaError, templates, busy, onNew, onEdit, onRemove }: TemplatesTabProps) {
   return (
     <div>
       <div className="note" style={{ marginBottom: 14 }}>
@@ -607,7 +640,13 @@ function TemplatesTab({ meta, templates, busy, onNew, onEdit, onRemove }: Templa
         <h3 className="section-title" style={{ margin: 0 }}>
           Plantillas
         </h3>
-        <button className="btn btn-primary" style={smallBtn} onClick={onNew}>
+        <button
+          className="btn btn-primary"
+          style={smallBtn}
+          onClick={onNew}
+          disabled={!meta && !metaError}
+          title={meta ? undefined : metaError ? undefined : 'Cargando configuración de conexiones…'}
+        >
           + Nueva plantilla
         </button>
       </div>
@@ -641,6 +680,19 @@ function TemplatesTab({ meta, templates, busy, onNew, onEdit, onRemove }: Templa
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Contenido del modal cuando `meta` aún no llegó: cargando o error con reintento (nunca vacío). */
+function MetaFallback({ metaError, onRetry }: { metaError: string; onRetry: () => void }) {
+  if (!metaError) return <p style={{ fontSize: 13, margin: 0 }}>Cargando configuración de conexiones…</p>;
+  return (
+    <div>
+      <p style={{ fontSize: 13, color: '#b00020', margin: '0 0 10px' }}>{metaError}</p>
+      <button className="btn btn-primary" style={smallBtn} onClick={onRetry}>
+        Reintentar
+      </button>
     </div>
   );
 }

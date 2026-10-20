@@ -21,6 +21,11 @@ import { SyncClientsDto } from './dto/sync-clients.dto';
  * job con `GET /clients/sync/:jobId` cada pocos segundos y merecería 429 si el
  * límite cubriera todo el controlador.
  *
+ * Los códigos de permiso pertenecen al módulo oculto `clients.sync` (sin UI
+ * propia): se registran en el catálogo RBAC al arrancar
+ * (ClientSyncPermissions) y se asignan a mano desde la gestión de perfiles del
+ * portal. Así un admin con `clients.*` ya no arrastra el disparo de sync.
+ *
  * El historial se sirve en `GET /clients/sync/jobs` (no en `/clients/sync` a
  * secas): `ClientsController` expone `GET /clients/:id` y, como se registra
  * antes, una ruta desnuda `/clients/sync` caería en ese `:id` (y el
@@ -36,7 +41,7 @@ export class ClientSyncController {
 
   /** Estrategias registradas (las que puede ofrecer el formulario de conexión). */
   @Get('meta')
-  @Permissions('clients.read')
+  @Permissions('clients.sync.read')
   meta() {
     return { strategies: this.strategies.all() };
   }
@@ -44,21 +49,21 @@ export class ClientSyncController {
   /** "Sincronizar ahora": encola la sincronización y devuelve el job a seguir. */
   @Post()
   @UseGuards(CompanyThrottlerGuard)
-  @Permissions('clients.update')
+  @Permissions('clients.sync.update')
   syncClients(@CurrentUser() user, @Body() dto: SyncClientsDto) {
     return this.trigger.syncClients(user, dto.companyId);
   }
 
   /** Historial reciente de sincronizaciones de la empresa. */
   @Get('jobs')
-  @Permissions('clients.read')
+  @Permissions('clients.sync.read')
   history(@CurrentUser() user, @Query('companyId') companyId?: string, @Query('limit') limit?: string) {
     return this.trigger.listJobs(user, companyId, Number(limit) || undefined);
   }
 
   /** Estado de una sincronización concreta. */
   @Get(':jobId')
-  @Permissions('clients.read')
+  @Permissions('clients.sync.read')
   job(@CurrentUser() user, @Param('jobId', new ParseUUIDPipe()) jobId: string, @Query('companyId') companyId?: string) {
     return this.trigger.getJob(user, companyId, jobId);
   }

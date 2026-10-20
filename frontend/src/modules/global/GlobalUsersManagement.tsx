@@ -12,6 +12,11 @@ interface GlobalUser {
   profile?: { id: string; name: string } | null;
 }
 
+interface GlobalProfileOption {
+  id: string;
+  name: string;
+}
+
 interface CompanyOption {
   id: string;
   name: string;
@@ -22,12 +27,14 @@ const errorMessage = (err: any, fallback: string) =>
 
 /**
  * Lista global de usuarios (todas las empresas) con búsqueda por email/nombre,
- * filtro por empresa y acciones de activar/desactivar y resetear contraseña.
- * Backend: GET /users/global, PATCH /users/:id/status, PATCH /users/:id/password.
+ * filtro por empresa, alta de usuarios globales (sin empresa) y acciones de
+ * activar/desactivar, cambiar perfil (globales) y resetear contraseña.
+ * Backend: GET /users/global, POST /users/global, PATCH /users/:id[/status|/password].
  */
 export function GlobalUsersManagement() {
   const [users, setUsers] = useState<GlobalUser[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [globalProfiles, setGlobalProfiles] = useState<GlobalProfileOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [companyFilter, setCompanyFilter] = useState('all');
@@ -40,6 +47,14 @@ export function GlobalUsersManagement() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Modal de creación de usuario global (sin empresa)
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', profileId: '' });
+
+  // Modal de cambio de perfil de un usuario global
+  const [profileTarget, setProfileTarget] = useState<GlobalUser | null>(null);
+  const [newProfileId, setNewProfileId] = useState('');
+
   const load = () => {
     setLoading(true);
     httpClient
@@ -51,6 +66,11 @@ export function GlobalUsersManagement() {
       .get('/config/companies')
       .then((res) => setCompanies((res.data || []).map((c: any) => ({ id: c.id, name: c.name }))))
       .catch(() => setCompanies([]));
+    // Perfiles globales: los que puede portar un usuario sin empresa.
+    httpClient
+      .get('/profiles/global')
+      .then((res) => setGlobalProfiles(res.data || []))
+      .catch(() => setGlobalProfiles([]));
   };
 
   useEffect(load, []);
@@ -75,6 +95,49 @@ export function GlobalUsersManagement() {
     setPwdTarget(u);
     setNewPassword('');
     setConfirmPassword('');
+  };
+
+  /** Alta de usuario global (sin empresa): perfil global de sistema o super_admin. */
+  const createGlobalUser = async () => {
+    if (!form.fullName.trim() || !form.email.trim() || form.password.length < 8 || !form.profileId) {
+      setError('Completá nombre, email, contraseña (mín. 8) y perfil');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await httpClient.post('/users/global', {
+        fullName: form.fullName.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        profileId: form.profileId,
+      });
+      setMsg(`${form.fullName.trim()} creado como usuario global.`);
+      setForm({ fullName: '', email: '', password: '', profileId: '' });
+      setShowCreate(false);
+      load();
+    } catch (err: any) {
+      setError(errorMessage(err, 'No se pudo crear el usuario'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Cambia el perfil de un usuario global (sin empresa). */
+  const saveProfile = async () => {
+    if (!profileTarget || !newProfileId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await httpClient.patch(`/users/${profileTarget.id}`, { profileId: newProfileId });
+      setMsg(`Perfil de ${profileTarget.fullName} actualizado.`);
+      setProfileTarget(null);
+      load();
+    } catch (err: any) {
+      setError(errorMessage(err, 'No se pudo cambiar el perfil'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const savePassword = async () => {
@@ -126,11 +189,55 @@ export function GlobalUsersManagement() {
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
-              <option value="none">Sin empresa (super_admin)</option>
+              <option value="none">Sin empresa (globales)</option>
             </select>
             <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
+          <button
+            className="btn btn-primary"
+            style={{ width: 'auto', padding: '0 18px' }}
+            onClick={() => { setError(''); setMsg(''); setShowCreate((v) => !v); }}
+          >
+            {showCreate ? 'Cancelar' : 'Nuevo usuario global'}
+          </button>
         </div>
+
+        {showCreate && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+            <h3 className="section-title" style={{ marginTop: 0 }}>Crear usuario global (sin empresa)</h3>
+            <div className="row2" style={{ marginBottom: 10 }}>
+              <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                <label>Nombre completo</label>
+                <input className="inp" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
+              </div>
+              <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                <label>Email</label>
+                <input className="inp" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </div>
+            </div>
+            <div className="row2">
+              <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                <label>Contraseña</label>
+                <input className="inp" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Mínimo 8 caracteres" />
+              </div>
+              <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                <label>Perfil de sistema global</label>
+                <div className="sel">
+                  <select value={form.profileId} onChange={(e) => setForm({ ...form, profileId: e.target.value })}>
+                    <option value="">Seleccioná un perfil…</option>
+                    {globalProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={createGlobalUser} disabled={busy} style={{ width: 'auto', padding: '0 20px', alignSelf: 'flex-end', opacity: busy ? 0.6 : 1 }}>
+                {busy ? 'Creando…' : 'Crear'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && <p style={{ color: 'red', fontSize: 12, marginBottom: 8 }}>{error}</p>}
@@ -165,6 +272,18 @@ export function GlobalUsersManagement() {
               {u.status === 'active' ? 'activo' : 'inactivo'}
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
+              {!u.company && (
+                <button
+                  onClick={() => { setError(''); setProfileTarget(u); setNewProfileId(u.profileId || ''); }}
+                  title="Cambiar perfil de sistema"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--green-deep)', display: 'inline-flex' }}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75M12 7a4 4 0 1 1-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() => toggleStatus(u)}
                 title={u.status === 'active' ? 'Desactivar usuario' : 'Activar usuario'}
@@ -221,6 +340,33 @@ export function GlobalUsersManagement() {
             {busy ? 'Guardando…' : 'Guardar'}
           </button>
           <button className="btn btn-ghost" onClick={() => setPwdTarget(null)} disabled={busy}>
+            Cancelar
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={!!profileTarget} onClose={() => !busy && setProfileTarget(null)}>
+        <h3 className="section-title" style={{ marginTop: 0 }}>
+          Cambiar perfil de {profileTarget?.fullName}
+        </h3>
+        <div className="field">
+          <label>Perfil de sistema global</label>
+          <div className="sel">
+            <select value={newProfileId} onChange={(e) => setNewProfileId(e.target.value)}>
+              <option value="">Seleccioná un perfil…</option>
+              {globalProfiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </div>
+        </div>
+        {error && <p style={{ color: 'red', fontSize: 12 }}>{error}</p>}
+        <div className="row2" style={{ marginTop: 12 }}>
+          <button className="btn btn-primary" onClick={saveProfile} disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Guardando…' : 'Guardar'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setProfileTarget(null)} disabled={busy}>
             Cancelar
           </button>
         </div>

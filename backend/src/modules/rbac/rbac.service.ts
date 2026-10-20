@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, OnModuleInit, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository, In, IsNull, Not } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -6,11 +6,12 @@ import { Profile } from './entities/profile.entity';
 import { Permission } from './entities/permission.entity';
 import { ProfilePermission } from './entities/profile-permission.entity';
 import { SUPER_ADMIN_PROFILE_ID, ADMIN_PROFILE_ID, VENDEDOR_PROFILE_ID } from '../../commons/constants';
+import { HIDDEN_SYSTEM_MODULES } from '../../commons/system-modules';
 import Redis from 'ioredis';
 import { StructuredLogger } from '../../commons/logger/structured-logger.service';
 
 @Injectable()
-export class RbacService {
+export class RbacService implements OnModuleInit {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Profile) private profileRepo: Repository<Profile>,
@@ -19,6 +20,13 @@ export class RbacService {
     @Inject(Redis) private redis: Redis,
     private logger: StructuredLogger,
   ) {}
+
+  /** Registra al arrancar los permisos de los módulos ocultos (sin UI). Idempotente. */
+  async onModuleInit(): Promise<void> {
+    for (const mod of HIDDEN_SYSTEM_MODULES) {
+      await this.registerModulePermissions(mod.resource, mod.actions);
+    }
+  }
 
   private cacheKey(userId: string): string {
     return `rbac:permissions:${userId}`;
@@ -108,9 +116,10 @@ export class RbacService {
   /* ---------- Profiles ---------- */
 
   findProfiles(companyId: string | null) {
-    // Perfiles de sistema: solo super_admin es global (compartido). admin/vendedor
-    // ahora son POR EMPRESA (clones con mismo nombre, permisos independientes);
-    // sus plantillas globales quedan ocultas y se usan solo para clonar.
+    // Perfiles de sistema: super_admin y los perfiles globales creados desde el
+    // portal; admin/vendedor ahora son POR EMPRESA (clones con mismo nombre,
+    // permisos independientes); sus plantillas globales quedan ocultas y se usan
+    // solo para clonar.
     if (companyId) {
       return this.profileRepo.find({
         where: [
@@ -120,8 +129,20 @@ export class RbacService {
         order: { name: 'ASC' },
       });
     }
+    return this.findGlobalSystemProfiles();
+  }
+
+  /**
+   * Perfiles globales de sistema (company_id NULL): super_admin y los creados
+   * desde el portal global. Excluye las plantillas admin/vendedor, que siguen
+   * ocultas (solo se usan para clonar en `ensureCompanyProfiles`).
+   */
+  findGlobalSystemProfiles() {
     return this.profileRepo.find({
-      where: { id: SUPER_ADMIN_PROFILE_ID },
+      where: {
+        companyId: IsNull(),
+        id: Not(In([ADMIN_PROFILE_ID, VENDEDOR_PROFILE_ID])),
+      },
       order: { name: 'ASC' },
     });
   }
@@ -174,12 +195,78 @@ export class RbacService {
     return { success: true };
   }
 
+  /* ---------- Perfiles globales de sistema (portal del superadmin) ---------- */
+
+  /**
+   * Perfil global editable: company_id NULL y no es una plantilla de sistema
+   * (super_admin, admin ni vendedor), que son inmutables por API.
+   */
+  private async findEditableGlobalProfile(id: string): Promise<Profile> {
+    const profile = await this.profileRepo.findOne({ where: { id } });
+    if (!profile || profile.companyId !== null) throw new NotFoundException('Perfil no encontrado');
+    if (profile.id === SUPER_ADMIN_PROFILE_ID || profile.id === ADMIN_PROFILE_ID || profile.id === VENDEDOR_PROFILE_ID) {
+      throw new ForbiddenException('Este perfil de sistema no se puede modificar ni eliminar');
+    }
+    return profile;
+  }
+
+  /** Crea un perfil de sistema global (sin empresa), visible solo en el portal. */
+  async createGlobalSystemProfile(name: string) {
+    const exists = await this.profileRepo.findOne({ where: { name, companyId: IsNull() } });
+    if (exists) throw new ConflictException('Ya existe un perfil con ese nombre');
+    return this.profileRepo.save(
+      this.profileRepo.create({ name, companyId: null, isSystemRole: true }),
+    );
+  }
+
+  async updateGlobalSystemProfile(id: string, name: string) {
+    const profile = await this.findEditableGlobalProfile(id);
+    profile.name = name;
+    return this.profileRepo.save(profile);
+  }
+
+  async deleteGlobalSystemProfile(id: string) {
+    const profile = await this.findEditableGlobalProfile(id);
+    const usersCount = await this.userRepo.count({ where: { profileId: id } });
+    if (usersCount > 0) throw new ConflictException('No se puede eliminar: hay usuarios asignados a este perfil');
+    await this.profileRepo.remove(profile);
+    return { success: true };
+  }
+
+  /**
+   * El perfil debe existir y pertenecer a la empresa indicada (nunca global ni
+   * plantilla de sistema): evita que un admin asigne vía API perfiles de otra
+   * empresa u ocultos (OWASP A01:2021). Solo para callers de empresa.
+   */
+  async assertCompanyProfile(profileId: string, companyId: string | null): Promise<void> {
+    const profile = await this.profileRepo.findOne({ where: { id: profileId } });
+    if (!companyId || !profile || profile.companyId !== companyId) {
+      throw new ForbiddenException('El perfil no pertenece a esta empresa');
+    }
+  }
+
+  /**
+   * El perfil debe ser un perfil global de sistema (company_id NULL, sin ser
+   * una plantilla oculta): usado al crear usuarios globales desde el portal.
+   */
+  async assertGlobalSystemProfile(profileId: string): Promise<void> {
+    const profile = await this.profileRepo.findOne({ where: { id: profileId } });
+    if (
+      !profile ||
+      profile.companyId !== null ||
+      profile.id === ADMIN_PROFILE_ID ||
+      profile.id === VENDEDOR_PROFILE_ID
+    ) {
+      throw new ForbiddenException('El perfil debe ser un perfil global de sistema');
+    }
+  }
+
   /* ---------- Profile Permissions ---------- */
 
   /**
-   * El perfil objetivo debe pertenecer a la empresa del caller (o ser el perfil
-   * global super_admin). Evita que un admin de una empresa toque perfiles de
-   * otra empresa ni las plantillas de sistema ajenas (OWASP A01:2021).
+   * El perfil objetivo debe pertenecer a la empresa del caller, o ser un perfil
+   * global de sistema operado por el superadmin. Las plantillas globales
+   * admin/vendedor quedan excluidas: nadie las toca por API (OWASP A01:2021).
    */
   private async assertAccessibleProfile(
     profileId: string,
@@ -189,14 +276,18 @@ export class RbacService {
     const profile = await this.profileRepo.findOne({ where: { id: profileId } });
     if (!profile) throw new NotFoundException('Perfil no encontrado');
 
-    const isGlobalSuperAdmin = profile.companyId === null && profile.id === SUPER_ADMIN_PROFILE_ID;
+    const isTemplate =
+      profile.id === ADMIN_PROFILE_ID || profile.id === VENDEDOR_PROFILE_ID;
+    if (isTemplate) throw new NotFoundException('Perfil no encontrado');
+
+    const isGlobalSystem = profile.companyId === null;
     const isCompanyProfile = companyId !== null && profile.companyId === companyId;
 
-    if (!isGlobalSuperAdmin && !isCompanyProfile) {
+    if (!isGlobalSystem && !isCompanyProfile) {
       throw new NotFoundException('Perfil no encontrado');
     }
-    if (isGlobalSuperAdmin && actor && actor.profileId !== SUPER_ADMIN_PROFILE_ID) {
-      throw new ForbiddenException('Solo el superadmin puede modificar el perfil super_admin');
+    if (isGlobalSystem && actor?.profileId !== SUPER_ADMIN_PROFILE_ID) {
+      throw new ForbiddenException('Solo el superadmin puede operar sobre perfiles globales de sistema');
     }
     return profile;
   }
@@ -206,8 +297,8 @@ export class RbacService {
     await Promise.all(users.map((u) => this.redis.del(this.cacheKey(u.id))));
   }
 
-  async getProfilePermissions(profileId: string, companyId: string | null) {
-    await this.assertAccessibleProfile(profileId, companyId);
+  async getProfilePermissions(profileId: string, companyId: string | null, actor?: { profileId: string }) {
+    await this.assertAccessibleProfile(profileId, companyId, actor);
     const rows = await this.profilePermRepo.find({ where: { profileId }, relations: ['permission'] });
     return rows.map((r) => r.permission);
   }

@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { httpClient } from '../../shared/api/httpClient';
+import { describeApiError, getApiError } from '../../shared/api/apiError';
+import { errorMessage } from './connections.api';
 import { useAuth, CompanySummary } from '../auth/AuthContext';
 import { ModulesManagement } from '../config/ModulesManagement';
 import { SharedClientsManagement } from './SharedClientsManagement';
 import { ConnectionsManagement } from './ConnectionsManagement';
 import { GlobalUsersManagement } from './GlobalUsersManagement';
+import { GlobalProfilesManagement } from './GlobalProfilesManagement';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
 
 interface ListCompany extends CompanySummary {
@@ -16,6 +19,7 @@ interface ListCompany extends CompanySummary {
 const TABS = [
   { id: 'companies', label: 'Empresas' },
   { id: 'users', label: 'Usuarios' },
+  { id: 'profiles', label: 'Perfiles' },
   { id: 'modules', label: 'Módulos' },
   { id: 'clients', label: 'Clientes globales' },
   { id: 'connections', label: 'Conexiones' },
@@ -41,8 +45,9 @@ export function SuperAdminGlobalConfigPage() {
       const draftsMap: Record<string, { name: string; primaryColor: string; isActive: boolean }> = {};
       for (const c of list) draftsMap[c.id] = { name: c.name, primaryColor: c.primaryColor, isActive: c.isActive };
       setDrafts(draftsMap);
-    } catch {
-      setError('No se pudieron cargar las empresas');
+      setError('');
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudieron cargar las empresas'));
     }
   };
 
@@ -81,11 +86,12 @@ export function SuperAdminGlobalConfigPage() {
     const form = new FormData();
     form.append('file', file);
     try {
-      const res = await httpClient.post(`/config/companies/${c.id}/logo`, form);
+      const res = await httpClient.post(`/config/companies/${c.id}/logo`, form, { timeout: 120_000 });
       const newLogo = res.data?.logoUrl || '';
       setCompanies((prev) => prev.map((x) => (x.id === c.id ? { ...x, logoUrl: newLogo } : x)));
     } catch (err: any) {
-      setError(err?.response?.data?.message?.message || 'No se pudo subir');
+      const apiErr = getApiError(err);
+      setError(apiErr ? describeApiError(apiErr) : 'No se pudo subir');
     }
   };
 
@@ -94,7 +100,7 @@ export function SuperAdminGlobalConfigPage() {
       <div className="s2-head">
         <h1 className="page-title">Configuración global</h1>
         <p className="lead below">
-          Creá empresas, administrá usuarios, módulos, clientes globales y conexiones con sistemas externos de la plataforma.
+          Creá empresas, administrá usuarios, perfiles de sistema, módulos, clientes globales y conexiones con sistemas externos de la plataforma.
           <button
             onClick={async () => { await exitCompany(); navigate('/home'); }}
             style={{ marginLeft: 12, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
@@ -128,7 +134,7 @@ export function SuperAdminGlobalConfigPage() {
           ))}
         </div>
 
-        {error && <p style={{ color: 'red', fontSize: 12, marginBottom: 8 }}>{error}</p>}
+        {tab === 'companies' && error && <p style={{ color: 'red', fontSize: 12, marginBottom: 8 }}>{error}</p>}
 
         {tab === 'companies' && (
           <div>
@@ -158,7 +164,7 @@ export function SuperAdminGlobalConfigPage() {
                   </strong>
                   <label style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 12, background: '#fff' }}>
                     Subir logo
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadCompanyLogo(c, f); e.target.value = ''; }} />
+                    <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadCompanyLogo(c, f); e.target.value = ''; }} />
                   </label>
                 </div>
                 <div className="row2">
@@ -179,6 +185,8 @@ export function SuperAdminGlobalConfigPage() {
         )}
 
         {tab === 'users' && <GlobalUsersManagement />}
+
+        {tab === 'profiles' && <GlobalProfilesManagement />}
 
         {tab === 'modules' && <ModulesManagement mode="global" />}
 

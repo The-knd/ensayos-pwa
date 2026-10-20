@@ -79,7 +79,7 @@ export interface ModuleView {
 
 interface BootstrapData {
   user: { id: string; name: string; email: string; profileId?: string };
-  scope: 'company' | 'superadmin';
+  scope: 'company' | 'superadmin' | 'system';
   company: { id: string; name: string; theme: { primaryColor: string; logoUrl: string } } | null;
   companies: CompanySummary[];
   featureFlags: Record<string, boolean>;
@@ -108,6 +108,9 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+/** Perfil de sistema del superadmin (mismo UUID que commons/constants.ts del backend). */
+export const SUPER_ADMIN_PROFILE_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
 
 /** Alcance de los permisos: cambian por usuario y por empresa activa. */
 function scopeOf(data: BootstrapData | null): string | null {
@@ -274,7 +277,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setBootstrapError(null);
   };
 
-  const isSuperAccount = !!bootstrap?.user.email?.toLowerCase().startsWith('superadmin@');
+  // Mismo criterio que el backend (SuperAdminGuard): el perfil, no el email.
+  const isSuperAccount = bootstrap?.user.profileId === SUPER_ADMIN_PROFILE_ID;
 
   return (
     <AuthContext.Provider

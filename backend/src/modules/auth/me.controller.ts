@@ -34,6 +34,19 @@ export class MeController {
       };
     }
 
+    // Cuenta global de sistema (sin empresa, sin perfil super_admin): no tiene
+    // empresa ni tiles; sus permisos (p. ej. módulos ocultos) se aplican por API.
+    if (!authUser.companyId) {
+      return {
+        user: { id: user.id, name: user.fullName, email: user.email, profileId: user.profileId },
+        scope: 'system',
+        company: null,
+        companies: [],
+        featureFlags: {},
+        modulePlacements: [],
+      };
+    }
+
     const company = await this.configService.findOne(authUser.companyId);
     const featureFlags = await this.flagsService.getFlags(authUser.companyId, authUser.sub);
     const modulePlacements = await this.placementsService.findByCompany(authUser.companyId);

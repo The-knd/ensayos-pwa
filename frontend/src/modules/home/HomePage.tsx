@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth, SUPER_ADMIN_PROFILE_ID } from '../auth/AuthContext';
 import { isRegisteredPath } from '../registry';
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -68,8 +68,6 @@ function genericIcon() {
     <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" strokeWidth="2" /></svg>
   );
 }
-
-const SUPER_ADMIN_PROFILE_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
 
 export function HomePage() {
   const { bootstrap, moduleContexts, loadModuleContext, enterCompany, exitCompany } = useAuth();
@@ -178,6 +176,31 @@ export function HomePage() {
               <span>Configuración global</span>
             </Link>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Cuenta global de sistema (sin empresa, sin tiles con interfaz) ---
+  if (bootstrap?.scope === 'system') {
+    return (
+      <div className="s2">
+        <div className="s2-head">
+          <div className="greet">
+            <div className="welcome">
+              <div className="brand-ava">
+                <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" strokeWidth="2" /></svg>
+              </div>
+              <div>
+                <h2>Hola, {bootstrap.user.name?.split(' ')[0] || 'Usuario'}</h2>
+                <p className="brand-sub">Cuenta de sistema</p>
+              </div>
+            </div>
+          </div>
+          <h1 className="page-title">Sin módulos con interfaz</h1>
+          <p className="lead below">
+            Esta cuenta no tiene módulos visibles; sus permisos se aplican sobre endpoints del backend.
+          </p>
         </div>
       </div>
     );

@@ -70,7 +70,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
 };
 
 export function Sidebar() {
-  const { bootstrap, moduleContexts, logout, isSuperAccount } = useAuth();
+  const { bootstrap, moduleContexts, logout } = useAuth();
   const theme = useTheme();
   const navigate = useNavigate();
   const companyName = bootstrap?.company?.name || 'PWA App';
@@ -119,7 +119,9 @@ export function Sidebar() {
         <NavLink to="/profile" end className={({ isActive }) => (isActive ? 'side-link on' : 'side-link')}>
           {NAV_ICONS.profile} <span>Perfil</span>
         </NavLink>
-        {isSuperAccount && bootstrap?.scope === 'company' && (
+        {/* RequireSuper exige scope 'superadmin': en scope empresa el enlace
+            daría 403, así que solo se muestra en el selector global. */}
+        {bootstrap?.scope === 'superadmin' && (
           <NavLink to="/global-config" end className={({ isActive }) => (isActive ? 'side-link on' : 'side-link')}>
             {NAV_ICONS.globe} <span>Panel global</span>
           </NavLink>

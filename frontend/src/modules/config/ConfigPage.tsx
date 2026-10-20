@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { httpClient } from '../../shared/api/httpClient';
+import { describeApiError, getApiError } from '../../shared/api/apiError';
 import { ModulesManagement } from './ModulesManagement';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
 
@@ -67,10 +68,11 @@ export function ConfigPage() {
     const form = new FormData(); form.append('file', file);
     setBusy(true);
     try {
-      const res = await httpClient.post('/config/logo', form);
+      const res = await httpClient.post('/config/logo', form, { timeout: 120_000 });
       setLogoUrl(res.data?.logoUrl || ''); await refreshBootstrap(); setSaved(true);
     } catch (err: any) {
-      setError(err?.response?.data?.message?.message || 'No se pudo subir el logo');
+      const apiErr = getApiError(err);
+      setError(apiErr ? describeApiError(apiErr) : 'No se pudo subir el logo');
     } finally { setBusy(false); }
   };
 
@@ -153,7 +155,7 @@ export function ConfigPage() {
                 {canUpdate && (
                   <label style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 13, background: '#fff' }}>
                     {busy ? 'Subiendo…' : 'Elegir imagen'}
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadOwnLogo(f); e.target.value = ''; }} />
+                    <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadOwnLogo(f); e.target.value = ''; }} />
                   </label>
                 )}
               </div>

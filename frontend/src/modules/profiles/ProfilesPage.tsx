@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth, SUPER_ADMIN_PROFILE_ID } from '../auth/AuthContext';
 import { httpClient } from '../../shared/api/httpClient';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
 
@@ -17,7 +17,7 @@ interface Permission {
 }
 
 export function ProfilesPage() {
-  const { moduleContexts, loadModuleContext } = useAuth();
+  const { moduleContexts, loadModuleContext, isSuperAccount } = useAuth();
   useBackTarget('/profiles');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -155,7 +155,7 @@ export function ProfilesPage() {
                     Editar
                   </button>
                 )}
-                {canUpdate && (
+                {canUpdate && (p.id !== SUPER_ADMIN_PROFILE_ID || isSuperAccount) && (
                   <button
                     onClick={() => openPermissions(p)}
                     style={{ background: 'none', border: 'none', color: 'var(--green-deep)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
