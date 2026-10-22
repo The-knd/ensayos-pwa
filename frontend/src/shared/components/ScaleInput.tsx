@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
 interface ScaleInputProps {
+  id?: string;
+  className?: string;
   value: number | null;
   onChange: (value: number) => void;
   lowLabel?: string;
@@ -15,6 +17,8 @@ interface ScaleInputProps {
  * para que el estado inicial no se confunda con una respuesta válida.
  */
 export function ScaleInput({
+  id,
+  className = '',
   value,
   onChange,
   lowLabel = '1',
@@ -25,7 +29,7 @@ export function ScaleInput({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="scale">
+    <div className={`scale ${className}`}>
       <div className="scale-head">
         <span className="scale-val">
           {value ?? '—'}
@@ -54,6 +58,7 @@ export function ScaleInput({
       </div>
 
       <input
+        id={id}
         type="range"
         min={1}
         max={5}

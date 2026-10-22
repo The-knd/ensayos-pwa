@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { httpClient } from '../../shared/api/httpClient';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { startAuthentication } from '@simplewebauthn/browser';
+
+const LABELS = {
+  email: 'Email',
+  password: 'Contraseña',
+};
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,6 +19,16 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [uiMode, setUiMode] = useState<'form' | 'has-passkey' | 'loading'>('loading');
   const navigate = useNavigate();
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const fields = useFieldErrors({
+    values: { email, password },
+    required: ['email', 'password'],
+    validate: (values) => ({
+      email: values.email && EMAIL_RE.test(String(values.email).trim()) ? '' : 'Ingrese un correo válido',
+      password: values.password ? '' : 'Ingrese la contraseña',
+    }),
+  });
   const { refreshBootstrap, resetModuleContexts } = useAuth();
 
   // Guards contra disparos duplicados (React.StrictMode en dev monta el efecto
@@ -69,6 +87,8 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    fields.touchAll();
+    if (!fields.isValid) return;
     setError('');
     setBusy(true);
     try {
@@ -165,17 +185,30 @@ export function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit}>
-            <div className="field">
-              <label>Email</label>
+            <FormSummary
+              pending={fields.pendingKeys.map((k) => ({ key: k, label: LABELS[k] }))}
+              errors={fields.invalidKeys.map((k) => ({ key: k, label: LABELS[k], message: fields.errors[k] }))}
+            />
+
+            <FormField
+              id="login-email"
+              label="Email"
+              required
+              status={fields.status.email}
+              error={fields.errors.email}
+            >
               <div className="inp">
                 <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><path d="m2 7 10 7 10-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
                 <input
+                  id="login-email"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
                     setUiMode('form');
+                    fields.touch('email');
                   }}
                   onBlur={(e) => {
+                    fields.touch('email');
                     if (e.target.value && uiMode !== 'has-passkey') {
                       checkPasskeys(e.target.value);
                     }
@@ -185,21 +218,28 @@ export function LoginPage() {
                   type="email"
                 />
               </div>
-            </div>
+            </FormField>
 
-            <div className="field">
-              <label>Contraseña</label>
+            <FormField
+              id="login-password"
+              label="Contraseña"
+              required
+              status={fields.status.password}
+              error={fields.errors.password}
+            >
               <div className="inp">
                 <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" /></svg>
                 <input
+                  id="login-password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); fields.touch('password'); }}
+                  onBlur={() => fields.touch('password')}
                   placeholder="••••••••"
                   autoComplete="current-password"
                 />
               </div>
-            </div>
+            </FormField>
 
             <button type="submit" className="btn btn-primary" disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
               {busy ? 'Ingresando…' : 'Ingresar'}

@@ -43,13 +43,13 @@ export class StudyCreditDto {
 
   @IsInt()
   @Min(0)
-  @Max(100)
   @Type(() => Number)
   yearsExperience: number;
 
-  /** Entero en pesos: la columna es bigint. */
-  @IsInt()
+  /** Monto en pesos con centavos: la columna es numeric(14,2). */
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Max(999999999999.99)
   @Type(() => Number)
   opportunityValue: number;
 

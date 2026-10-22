@@ -4,6 +4,7 @@ import { AppBar } from '../../shared/components/AppBar';
 import { CreditStepper } from '../../shared/components/CreditStepper';
 import { httpClient } from '../../shared/api/httpClient';
 import { useTheme } from '../../shared/theme/ThemeContext';
+import { formatMoney } from '../../shared/utils/format';
 import { resumePath, statusMeta } from './creditStatus';
 
 interface CreditDetail {
@@ -348,7 +349,7 @@ export function CreditResultPage() {
         <div className="stk"><div className="k">NIT</div><div className="v">{credit.nit || '—'}</div></div>
         <div className="stk"><div className="k">Tipo de persona</div><div className="v">{answers.personType === 'juridica' ? 'Jurídica' : answers.personType === 'natural' ? 'Natural' : '—'}</div></div>
         <div className="stk"><div className="k">Años de experiencia</div><div className="v">{String(answers.yearsExperience ?? '—')}</div></div>
-        <div className="stk"><div className="k">Valor de la oportunidad</div><div className="v">${Number(answers.opportunityValue ?? 0).toLocaleString('es-CO')}</div></div>
+        <div className="stk"><div className="k">Valor de la oportunidad</div><div className="v">{formatMoney(Number(answers.opportunityValue ?? 0))}</div></div>
         {!!algorithm?.score && (
           <div className="stk"><div className="k">Puntaje del algoritmo</div><div className="v">{algorithm.score}</div></div>
         )}

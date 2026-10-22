@@ -1,9 +1,10 @@
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany, ValueTransformer } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../commons/entities/base.entity';
 import { Company } from '../../config/entities/company.entity';
 import { Client, ClientPersonType } from '../../clients/entities/client.entity';
 import { CreditDocument } from './credit-document.entity';
 import type { SamanAlgorithmResult } from '../saman/saman.types';
+import { numericAsNumber } from '../../../commons/utils/numeric.transformer';
 
 /** Flujo y transiciones: ver migración 1700000022000-CreditStatusFlow. */
 export enum CreditStatus {
@@ -20,16 +21,6 @@ export enum CreditStatus {
 
 /** Estados en los que el estudio ya no se puede retomar. */
 export const FINAL_CREDIT_STATUSES: readonly CreditStatus[] = [CreditStatus.REJECTED, CreditStatus.CANCELLED];
-
-/**
- * El driver `pg` devuelve bigint como string. Sin este transformer
- * `opportunityValue` llega como texto al front y a cualquier cálculo
- * (NaN silencioso). Ver migración 1700000020000.
- */
-const bigintAsNumber: ValueTransformer = {
-  to: (value?: number | null) => (value == null ? null : value),
-  from: (value?: string | null) => (value == null ? null : Number(value)),
-};
 
 export interface SigningContact {
   email: string;
@@ -79,8 +70,8 @@ export class Credit extends BaseEntity {
   @Column({ name: 'years_experience', type: 'int', nullable: true })
   yearsExperience: number;
 
-  /** Monto en pesos que el asesor dimensiona como oportunidad. Entero, sin decimales. */
-  @Column({ name: 'opportunity_value', type: 'bigint', nullable: true, transformer: bigintAsNumber })
+  /** Monto en pesos que el asesor dimensiona como oportunidad. Puede incluir centavos. */
+  @Column({ name: 'opportunity_value', type: 'numeric', precision: 14, scale: 2, nullable: true, transformer: numericAsNumber })
   opportunityValue: number;
 
   /** Juicio del asesor que conoce al cliente: 1 no paga, 5 paga. */

@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { httpClient } from '../../shared/api/httpClient';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { ModuleView, CompanySummary } from '../auth/AuthContext';
 import { FrontendModule, findModule, isRegisteredPath } from '../registry';
 import { ModulePathSelect } from './ModulePathSelect';
@@ -24,6 +27,13 @@ const CRUD_OPS = [
   { action: 'update', name: 'Editar' },
   { action: 'delete', name: 'Eliminar' },
 ];
+
+const LABELS = {
+  key: 'Key',
+  label: 'Nombre visible',
+  path: 'Pantalla (path frontend)',
+  module: 'Módulo backend',
+};
 
 interface Props {
   mode: 'create' | 'edit';
@@ -68,6 +78,22 @@ export function ModuleForm({ mode, editing, superMode, companies, defaultCompany
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const fields = useFieldErrors({
+    values: {
+      key: value.key,
+      label: value.label,
+      path: value.path,
+      module: value.module,
+    },
+    required: ['key', 'label', 'path', 'module'],
+    validate: (values) => ({
+      key: values.key ? '' : 'La key es obligatoria',
+      label: values.label ? '' : 'El nombre visible es obligatorio',
+      path: values.path ? '' : 'Seleccioná una pantalla',
+      module: values.module ? '' : 'El módulo backend se completa al elegir la pantalla',
+    }),
+  });
+
   const set = (patch: Partial<ModuleFormValue>) => setValue((v) => ({ ...v, ...patch }));
 
   const hasUpdateOrDelete = value.operations.some((o) => o.action === 'update' || o.action === 'delete');
@@ -106,6 +132,8 @@ export function ModuleForm({ mode, editing, superMode, companies, defaultCompany
 
   const save = async () => {
     setError('');
+    fields.touchAll();
+    if (!fields.isValid) return;
     if (!value.key.trim() || !value.module.trim() || !value.label.trim() || !value.path.trim()) {
       setError('Completá key, pantalla (path), nombre visible y módulo backend.');
       return;
@@ -196,6 +224,11 @@ export function ModuleForm({ mode, editing, superMode, companies, defaultCompany
         {mode === 'create' ? 'Nuevo módulo' : `Editar módulo · ${editing?.label}`}
       </h3>
 
+      <FormSummary
+        pending={fields.pendingKeys.map((k) => ({ key: k, label: LABELS[k] }))}
+        errors={fields.invalidKeys.map((k) => ({ key: k, label: LABELS[k], message: fields.errors[k] }))}
+      />
+
       {showGlobalConfig && (
         <div className="row2">
           <div className="field" style={{ flex: 1 }}>
@@ -223,29 +256,61 @@ export function ModuleForm({ mode, editing, superMode, companies, defaultCompany
       )}
 
       <div className="row2">
-        <div className="field" style={{ flex: 1 }}>
-          <label>Pantalla (path frontend)</label>
-          <ModulePathSelect value={value.path} onChange={pickPath} />
+        <FormField
+          id="module-path"
+          label="Pantalla (path frontend)"
+          required
+          status={fields.status.path}
+          error={fields.errors.path}
+          className="field"
+          style={{ flex: 1 }}
+        >
+          <ModulePathSelect
+            id="module-path"
+            value={value.path}
+            onChange={(path, owner) => { pickPath(path, owner); fields.touch('path'); fields.touch('module'); }}
+          />
           {pathMismatch && (
             <p style={{ color: '#b00020', fontSize: 11, marginTop: 4 }}>
               ⚠️ Esta pantalla pertenece a otro módulo: se pedirán permisos de ese módulo, no de <code>{value.module}.*</code>.
             </p>
           )}
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Módulo backend (recurso)</label>
-          <input className="inp" value={value.module} placeholder="Se completa al elegir la pantalla" disabled />
-        </div>
+        </FormField>
+        <FormField
+          id="module-backend"
+          label="Módulo backend (recurso)"
+          required
+          status={fields.status.module}
+          error={fields.errors.module}
+          className="field"
+          style={{ flex: 1 }}
+        >
+          <input id="module-backend" className="inp" value={value.module} placeholder="Se completa al elegir la pantalla" disabled />
+        </FormField>
       </div>
       <div className="row2">
-        <div className="field" style={{ flex: 1 }}>
-          <label>Key</label>
-          <input className="inp" value={value.key} onChange={(e) => set({ key: e.target.value })} placeholder="Ej: creditos" disabled={mode === 'edit'} />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Nombre visible</label>
-          <input className="inp" value={value.label} onChange={(e) => set({ label: e.target.value })} placeholder="Ej: Créditos" />
-        </div>
+        <FormField
+          id="module-key"
+          label="Key"
+          required
+          status={fields.status.key}
+          error={fields.errors.key}
+          className="field"
+          style={{ flex: 1 }}
+        >
+          <input id="module-key" className="inp" value={value.key} onChange={(e) => { set({ key: e.target.value }); fields.touch('key'); }} placeholder="Ej: creditos" disabled={mode === 'edit'} />
+        </FormField>
+        <FormField
+          id="module-label"
+          label="Nombre visible"
+          required
+          status={fields.status.label}
+          error={fields.errors.label}
+          className="field"
+          style={{ flex: 1 }}
+        >
+          <input id="module-label" className="inp" value={value.label} onChange={(e) => { set({ label: e.target.value }); fields.touch('label'); }} placeholder="Ej: Créditos" />
+        </FormField>
       </div>
       <div className="field">
         <label>Ícono (URL o clave existente)</label>
@@ -269,7 +334,7 @@ export function ModuleForm({ mode, editing, superMode, companies, defaultCompany
           </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Posición</label>
-            <input className="inp" type="number" value={value.position} onChange={(e) => set({ position: Number(e.target.value) })} />
+            <input className="inp" type="number" value={value.position} onChange={(e) => set({ position: e.target.value === '' ? 0 : Number(e.target.value) })} />
           </div>
         </div>
       )}

@@ -85,15 +85,32 @@ export class CreditsService {
     private signatures: CreditSignatureService,
   ) {}
 
-  findAll(companyId: string, query: { page?: number; limit?: number }) {
+  findAll(companyId: string, query: { page?: number; limit?: number; q?: string }) {
     const { page, limit } = clampPagination(query);
-    return this.repo.findAndCount({
-      where: { companyId },
-      relations: ['client'],
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    const q = (query.q ?? '').trim();
+
+    const qb = this.repo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.client', 'client')
+      .where('c.companyId = :companyId', { companyId })
+      .orderBy('c.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (q) {
+      const like = `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`;
+      qb.andWhere(
+        `(CAST(c.id AS text) ILIKE :like ESCAPE '\\'
+          OR c.nit ILIKE :like ESCAPE '\\'
+          OR c.applicationNumber ILIKE :like ESCAPE '\\'
+          OR client.fullName ILIKE :like ESCAPE '\\'
+          OR client.legalName ILIKE :like ESCAPE '\\'
+          OR client.documentNumber ILIKE :like ESCAPE '\\')`,
+        { like },
+      );
+    }
+
+    return qb.getManyAndCount();
   }
 
   async findOne(id: string, companyId: string) {

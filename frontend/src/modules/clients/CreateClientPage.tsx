@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '../../shared/api/httpClient';
 import { AddressBuilderModal } from '../../shared/components/AddressBuilderModal';
+import { CurrencyInput } from '../../shared/components/CurrencyInput';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { calcNitDv, isValidFullNit, sanitizeDocumentNumber } from '../../shared/utils/validators';
 
 const ACTIVIDADES: Array<[string, string]> = [
@@ -31,6 +35,14 @@ const CIUDADES = [
 ];
 
 const INDICATIVOS = ['601', '602', '604', '605', '606', '607', '608', '609'];
+
+const LABELS = {
+  personType: 'Tipo de persona',
+  documentType: 'Tipo de documento',
+  documentNumber: 'Número de documento',
+  fullName: 'Nombre completo',
+  accept: 'Aceptación de tratamiento de datos',
+};
 
 interface Address {
   built: string;
@@ -71,28 +83,57 @@ export function CreateClientPage() {
   const [accept, setAccept] = useState(false);
   const [error, setError] = useState('');
 
+  const fullNameValue =
+    form.fullName ||
+    (personType === 'juridica'
+      ? form.legalName || [form.repFirstName, form.repFirstLastName].filter(Boolean).join(' ')
+      : [form.firstName, form.firstLastName].filter(Boolean).join(' ')) ||
+    form.commercialName ||
+    '';
+
+  const fields = useFieldErrors({
+    values: {
+      personType,
+      documentType: form.documentType || '',
+      documentNumber: form.documentNumber || '',
+      fullName: fullNameValue,
+      accept,
+    },
+    required: ['personType', 'documentType', 'documentNumber', 'fullName', 'accept'],
+    validate: (values) => ({
+      personType: values.personType ? '' : 'Seleccione el tipo de persona',
+      documentType: values.documentType ? '' : 'Seleccione el tipo de documento',
+      documentNumber: values.documentNumber
+        ? isNit && !isValidFullNit(String(values.documentNumber))
+          ? /^\d{9,16}$/.test(String(values.documentNumber))
+            ? `El DV no coincide: debería terminar en ${calcNitDv(String(values.documentNumber).slice(0, -1))}.`
+            : 'Escribe el NIT completo: número más DV.'
+          : ''
+        : 'Ingrese el número de documento',
+      fullName: values.fullName ? '' : 'Ingrese el nombre completo',
+      accept: values.accept ? '' : 'Debe aceptar el tratamiento de datos',
+    }),
+  });
+
   const set = (key: string, value: any) => setForm((prev) => ({ ...prev, [key]: value }));
   // Un NIT se digita completo (con DV, sin '-'): su DV es el último dígito. Para
   // otros documentos el número va sin DV y el DV se calcula (módulo 11).
   const isNit = form.documentType === 'nit';
   const doc: string = form.documentNumber || '';
-  const nitInvalid = isNit && doc.length > 0 && !isValidFullNit(doc);
   // Solo el NIT lleva DV (su último dígito); la cédula y otros documentos no tienen.
   const dv = isNit && isValidFullNit(doc) ? doc.slice(-1) : '';
   const bool = (key: string) => (v: string) => set(key, v === 'si');
 
   async function handleSubmit() {
     setError('');
-    if (!accept) { setError('Debe aceptar el tratamiento de datos'); return; }
+    fields.touchAll();
+    if (!fields.isValid) return;
     const fullName =
       form.fullName ||
       (personType === 'juridica'
         ? form.legalName || [form.repFirstName, form.repFirstLastName].filter(Boolean).join(' ')
         : [form.firstName, form.firstLastName].filter(Boolean).join(' ')) ||
       form.commercialName;
-    if (!fullName) { setError('El nombre completo es obligatorio'); return; }
-    if (!form.documentNumber) { setError('El número de documento es obligatorio'); return; }
-    if (nitInvalid) { setError("El NIT va completo, con su DV al final y sin '-'"); return; }
     const payload = {
       ...form,
       phone: form.phone || '',
@@ -128,29 +169,52 @@ export function CreateClientPage() {
           <p>La información debe coincidir con el documento de registro y diligenciarse en MAYÚSCULA, excepto los correos.</p>
         </div>
 
+        <FormSummary
+          pending={fields.pendingKeys.map((k) => ({ key: k, label: LABELS[k] }))}
+          errors={fields.invalidKeys.map((k) => ({ key: k, label: LABELS[k], message: fields.errors[k] }))}
+        />
+
         <button className="btn btn-primary" style={{ marginBottom: 16 }} type="button">Vinculación de cliente</button>
 
-        <div className="field">
-          <label>Tipo de persona</label>
+        <FormField
+          id="client-person-type"
+          label="Tipo de persona"
+          required
+          status={fields.status.personType}
+          error={fields.errors.personType}
+        >
           <div className="sel">
-            <select value={personType} onChange={(e) => setPersonType(e.target.value)}>
-              <option value="">* Seleccione el tipo de persona</option>
+            <select
+              id="client-person-type"
+              value={personType}
+              onChange={(e) => { setPersonType(e.target.value); fields.touch('personType'); }}
+            >
+              <option value="">Seleccione el tipo de persona</option>
               <option value="natural">Natural</option>
               <option value="juridica">Jurídica</option>
             </select>
             <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-        </div>
+        </FormField>
 
         {personType && (
           <>
             <div className="sec">Datos del documento</div>
 
-            <div className="field">
-              <label>Tipo de documento</label>
+            <FormField
+              id="client-document-type"
+              label="Tipo de documento"
+              required
+              status={fields.status.documentType}
+              error={fields.errors.documentType}
+            >
               <div className="sel">
-                <select value={form.documentType || ''} onChange={(e) => set('documentType', e.target.value)}>
-                  <option value="">* Seleccione el tipo de documento</option>
+                <select
+                  id="client-document-type"
+                  value={form.documentType || ''}
+                  onChange={(e) => { set('documentType', e.target.value); fields.touch('documentType'); }}
+                >
+                  <option value="">Seleccione el tipo de documento</option>
                   <option value="nit">NIT</option>
                   <option value="cc">Cédula de Ciudadanía</option>
                   <option value="ce">Cédula de Extranjería</option>
@@ -158,27 +222,28 @@ export function CreateClientPage() {
                 </select>
                 <svg className="cv" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </div>
-            </div>
+            </FormField>
 
             <div className="row2">
-              <div className="field" style={{ flex: 2 }}>
-                <label>{isNit ? "NIT completo, con DV y sin '-'" : "Número de documento (sin '-')"}</label>
+              <FormField
+                id="client-document-number"
+                label={isNit ? "NIT completo, con DV y sin '-'" : "Número de documento (sin '-')"}
+                required
+                status={fields.status.documentNumber}
+                error={fields.errors.documentNumber}
+                className="field"
+                style={{ flex: 2 }}
+              >
                 <input
+                  id="client-document-number"
                   className="inp"
-                  placeholder={isNit ? '* Ej. 9014902765' : "* Número de documento, sin '-'"}
+                  placeholder={isNit ? 'Ej. 9014902765' : "Número de documento, sin '-'"}
                   value={form.documentNumber || ''}
-                  onChange={(e) => set('documentNumber', sanitizeDocumentNumber(e.target.value))}
+                  onChange={(e) => { set('documentNumber', sanitizeDocumentNumber(e.target.value)); fields.touch('documentNumber'); }}
+                  onBlur={() => fields.touch('documentNumber')}
                   maxLength={20}
-                  style={nitInvalid ? { borderColor: '#e11225' } : undefined}
                 />
-                {nitInvalid && (
-                  <div className="help" style={{ color: '#c62828', fontWeight: 600 }}>
-                    {/^\d{9,16}$/.test(doc)
-                      ? `El DV no coincide: con ese número debería terminar en ${calcNitDv(doc.slice(0, -1))}.`
-                      : 'Escribe el NIT completo: número más DV.'}
-                  </div>
-                )}
-              </div>
+              </FormField>
               {isNit && (
                 <div className="field" style={{ flex: 1 }}>
                   <label>DV</label>
@@ -462,7 +527,14 @@ export function CreateClientPage() {
                 )}
 
                 <div className="sec">Capital y fondos</div>
-                <div className="field"><input className="inp" placeholder="Capital socio registrado" value={form.capitalRegistered || ''} onChange={(e) => set('capitalRegistered', e.target.value)} /></div>
+                <div className="field">
+                  <CurrencyInput
+                    id="client-capital-registered"
+                    value={form.capitalRegistered || ''}
+                    onChange={(raw) => set('capitalRegistered', raw)}
+                    placeholder="Capital socio registrado"
+                  />
+                </div>
                 <div className="field"><input className="inp" placeholder="Orígenes de fondos" value={form.fundsOrigin || ''} onChange={(e) => set('fundsOrigin', e.target.value)} /></div>
               </>
             )}
@@ -524,15 +596,33 @@ export function CreateClientPage() {
                   </div>
                   <div className="field" style={{ flex: 1 }}><input className="inp" placeholder="Teléfono" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} /></div>
                 </div>
-                <div className="field"><input className="inp" placeholder="Cupo crédito" value={ref.creditLimit} onChange={(e) => updateRef(idx, 'creditLimit', e.target.value)} /></div>
+                <div className="field">
+                  <CurrencyInput
+                    id={`client-ref-credit-limit-${idx}`}
+                    value={ref.creditLimit}
+                    onChange={(raw) => updateRef(idx, 'creditLimit', raw)}
+                    placeholder="Cupo crédito"
+                  />
+                </div>
               </div>
             ))}
 
-            <div className="sec">Aceptación</div>
-            <label className="check-row">
-              <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
-              <span>Acepta el tratamiento de datos personales de acuerdo con la política de protección de datos de S.A.S.</span>
-            </label>
+            <FormField
+              id="client-accept"
+              label="Aceptación"
+              required
+              status={fields.status.accept}
+              error={fields.errors.accept}
+            >
+              <label id="client-accept" className="check-row" tabIndex={-1}>
+                <input
+                  type="checkbox"
+                  checked={accept}
+                  onChange={(e) => { setAccept(e.target.checked); fields.touch('accept'); }}
+                />
+                <span>Acepta el tratamiento de datos personales de acuerdo con la política de protección de datos de S.A.S.</span>
+              </label>
+            </FormField>
 
             {error && <p className="error-msg">{error}</p>}
 

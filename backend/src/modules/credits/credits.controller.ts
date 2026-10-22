@@ -18,7 +18,7 @@ import { Permissions } from '../../commons/decorators/permissions.decorator';
 import { CurrentTenant } from '../../commons/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../commons/decorators/current-user.decorator';
 import { IdempotencyInterceptor } from '../../commons/interceptors/idempotency.interceptor';
-import { PaginationQueryDto } from '../../commons/dto/pagination.dto';
+import { ListCreditsDto } from './dto/list-credits.dto';
 import { CreditsService } from './credits.service';
 import { SignCreditDto } from './dto/sign-credit.dto';
 import { StudyCreditDto } from './dto/study-credit.dto';
@@ -41,7 +41,7 @@ export class CreditsController {
 
   @Get()
   @Permissions('credits.read')
-  findAll(@CurrentTenant() companyId: string, @Query() query: PaginationQueryDto) {
+  findAll(@CurrentTenant() companyId: string, @Query() query: ListCreditsDto) {
     return this.service.findAll(companyId, query);
   }
 

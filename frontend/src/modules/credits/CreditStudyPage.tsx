@@ -3,12 +3,17 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AppBar } from '../../shared/components/AppBar';
 import { CreditStepper } from '../../shared/components/CreditStepper';
+import { CurrencyInput } from '../../shared/components/CurrencyInput';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
 import { Modal } from '../../shared/components/Modal';
 import { ScaleInput } from '../../shared/components/ScaleInput';
 import { SignatureFullscreen, SignaturePad, useIsPhone } from '../../shared/components/SignaturePad';
 import { httpClient } from '../../shared/api/httpClient';
 import { getApiError } from '../../shared/api/apiError';
 import { useTheme } from '../../shared/theme/ThemeContext';
+import { formatMoney, sanitizeMoneyInput } from '../../shared/utils/format';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { documentForNewClient, idLabel, sanitizeNitInput, validateNit } from '../../shared/utils/validators';
 import { CONSENT_UI_MODE } from './consentUiMode';
 
@@ -22,6 +27,18 @@ type PersonType = 'natural' | 'juridica';
 const SUB_STEP_PARAM = 'paso';
 const IDENTIFICATION = 'identificacion';
 const CONFIRMATION = 'confirmacion';
+
+const LABELS_1A = {
+  yearsExperience: 'Años de experiencia',
+  opportunityValue: 'Valor de la oportunidad',
+  reliabilityScore: 'Confiabilidad',
+};
+
+const LABELS_1B = {
+  nit: 'Número de identificación',
+  nitConfirm: 'Confirmación del número',
+  signature: 'Autorización de datos',
+};
 
 /** Respuesta de POST /credits/study/preview: lo que se enviará a Saman, sin crear nada. */
 interface StudyPreview {
@@ -53,8 +70,6 @@ export function CreditStudyPage() {
   const [personType, setPersonType] = useState<PersonType>('natural');
   const [nit, setNit] = useState('');
   const [nitConfirm, setNitConfirm] = useState('');
-  const [nitTouched, setNitTouched] = useState(false);
-  const [confirmTouched, setConfirmTouched] = useState(false);
   const [results, setResults] = useState<ClientLookup[]>([]);
   const [client, setClient] = useState<ClientLookup | null>(null);
   const [searching, setSearching] = useState(false);
@@ -71,6 +86,42 @@ export function CreditStudyPage() {
   const [opportunityValue, setOpportunityValue] = useState('');
   const [reliabilityScore, setReliabilityScore] = useState<number | null>(null);
   const [preview, setPreview] = useState<StudyPreview | null>(null);
+
+  const step1a = useFieldErrors({
+    values: { yearsExperience, opportunityValue, reliabilityScore },
+    required: ['yearsExperience', 'opportunityValue', 'reliabilityScore'],
+    validate: (values) => ({
+      yearsExperience:
+        values.yearsExperience && Number(values.yearsExperience) > 0
+          ? ''
+          : values.yearsExperience
+            ? 'Debe ser mayor a 0'
+            : '',
+      opportunityValue:
+        values.opportunityValue && Number(values.opportunityValue) > 0
+          ? ''
+          : values.opportunityValue
+            ? 'Debe ser mayor a 0'
+            : '',
+      reliabilityScore: values.reliabilityScore != null ? '' : '',
+    }),
+  });
+
+  const step1b = useFieldErrors({
+    values: { nit, nitConfirm, signature: signatureData },
+    required: ['nit', 'nitConfirm', 'signature'],
+    validate: (values) => {
+      const errors = { nit: '', nitConfirm: '', signature: '' } as Record<'nit' | 'nitConfirm' | 'signature', string>;
+      if (values.nit) {
+        const check = validateNit(String(values.nit), client?.documentNumber, personType);
+        if (!check.ok) errors.nit = check.error;
+      }
+      if (values.nitConfirm && String(values.nitConfirm) !== String(values.nit)) {
+        errors.nitConfirm = `La confirmación no coincide con el ${idLabel(personType)}.`;
+      }
+      return errors;
+    },
+  });
 
   const canCreateClient = moduleContexts['clients']?.permissions.includes('clients.create') ?? false;
 
@@ -94,7 +145,7 @@ export function CreditStudyPage() {
       .then(({ data }) => {
         setPersonType(data.personType === 'juridica' ? 'juridica' : 'natural');
         if (data.yearsExperience != null) setYearsExperience(String(data.yearsExperience));
-        if (data.opportunityValue != null) setOpportunityValue(String(data.opportunityValue));
+        if (data.opportunityValue != null) setOpportunityValue(sanitizeMoneyInput(String(data.opportunityValue)));
         if (data.reliabilityScore != null) setReliabilityScore(Number(data.reliabilityScore));
         if (data.nit) setNit(sanitizeNitInput(data.nit));
       })
@@ -108,8 +159,7 @@ export function CreditStudyPage() {
     setPersonType(next);
     setNit('');
     setNitConfirm('');
-    setNitTouched(false);
-    setConfirmTouched(false);
+    step1b.resetTouched();
     setClient(null);
   };
   const juridica = personType === 'juridica';
@@ -184,18 +234,8 @@ export function CreditStudyPage() {
   /** 1b → 1c: valida en el front, pide al backend la petición que se enviará a Saman y la muestra. */
   const goToConfirmation = async () => {
     setError('');
-    if (!nitCheck.ok) {
-      setError(nitCheck.error);
-      return;
-    }
-    if (!confirmMatches) {
-      setError(`La confirmación del ${idName} no coincide.`);
-      return;
-    }
-    if (!signatureData) {
-      setError('El cliente debe firmar la autorización de tratamiento de datos para continuar.');
-      return;
-    }
+    step1b.touchAll();
+    if (!step1b.isValid) return;
     setSubmitting(true);
     try {
       const res = await httpClient.post('/credits/study/preview', studyPayload());
@@ -224,18 +264,10 @@ export function CreditStudyPage() {
 
   const logo = theme.logoUrl || undefined;
   const consentSigned = !!signatureData;
-  const clientReady = consentSigned && documentConfirmed;
-  const nitError = nitTouched && !nitCheck.ok ? nitCheck.error : '';
-  const confirmError = confirmTouched && nit.length > 0 && !confirmMatches ? `La confirmación no coincide con el ${idName}.` : '';
+  const clientReady = step1b.isValid;
 
-  const years = Number(yearsExperience);
   const opportunity = Number(opportunityValue);
-  const answersReady =
-    yearsExperience !== '' &&
-    years > 0 &&
-    opportunityValue !== '' &&
-    opportunity > 0 &&
-    reliabilityScore !== null;
+  const answersReady = step1a.isValid;
   const subStep = searchParams.get(SUB_STEP_PARAM);
   const onIdentification = subStep === IDENTIFICATION;
   const onConfirmation = subStep === CONFIRMATION;
@@ -252,7 +284,12 @@ export function CreditStudyPage() {
     setPreview(null);
   }, [client, nit, nitConfirm, personType, signatureData, yearsExperience, opportunityValue, reliabilityScore]);
 
-  const goToIdentification = () => setSearchParams({ [SUB_STEP_PARAM]: IDENTIFICATION });
+  const goToIdentification = () => {
+    step1a.touchAll();
+    if (step1a.isValid) {
+      setSearchParams({ [SUB_STEP_PARAM]: IDENTIFICATION });
+    }
+  };
 
   const checkMark = (
     <span className="bx">
@@ -270,27 +307,39 @@ export function CreditStudyPage() {
 
   // Las dos variantes de UI comparten el mismo estado: solo cambia dónde se
   // despliega el pad y cómo se abre (ver consentUiMode.ts).
-  const consentCard =
-    CONSENT_UI_MODE === 'modal' || isPhone ? (
-      <div
-        className={`check ${consentSigned ? 'on' : ''}`}
-        onClick={() => setShowConsent(true)}
-        style={{ flex: 'none' }}
-      >
-        {checkMark}
-        {consentCopy}
-        {consentSigned && <img className="sigthumb" src={signatureData as string} alt="Firma registrada" />}
-      </div>
-    ) : (
-      <div>
-        <div className={`check ${consentSigned ? 'on' : ''}`} onClick={() => setShowConsent((v) => !v)}>
+  const consentCard = (
+    <FormField
+      id="credit-signature"
+      label="Autorización de datos"
+      required
+      status={step1b.status.signature}
+      error={step1b.errors.signature}
+      help="El cliente debe firmar para autorizar la consulta en centrales de riesgo."
+    >
+      {CONSENT_UI_MODE === 'modal' || isPhone ? (
+        <div
+          id="credit-signature"
+          tabIndex={-1}
+          className={`check ${consentSigned ? 'on' : ''}`}
+          onClick={() => setShowConsent(true)}
+          style={{ flex: 'none' }}
+        >
           {checkMark}
           {consentCopy}
+          {consentSigned && <img className="sigthumb" src={signatureData as string} alt="Firma registrada" />}
         </div>
-        {showConsent && <SignaturePad onChange={setSignatureData} />}
-        {consentSigned && <img className="sigthumb" src={signatureData as string} alt="Firma registrada" />}
-      </div>
-    );
+      ) : (
+        <div id="credit-signature" tabIndex={-1}>
+          <div className={`check ${consentSigned ? 'on' : ''}`} onClick={() => setShowConsent((v) => !v)}>
+            {checkMark}
+            {consentCopy}
+          </div>
+          {showConsent && <SignaturePad onChange={(data) => { setSignatureData(data); step1b.touch('signature'); }} />}
+          {consentSigned && <img className="sigthumb" src={signatureData as string} alt="Firma registrada" />}
+        </div>
+      )}
+    </FormField>
+  );
 
   const consentSection = (
     <>
@@ -362,7 +411,7 @@ export function CreditStudyPage() {
                 · {personType === 'juridica' ? 'persona jurídica' : 'persona natural'}
               </div>
             </div>
-            <div className="stk"><div className="k">Evaluación comercial</div><div className="v">{yearsExperience} años · ${opportunity.toLocaleString('es-CO')} · confiabilidad {reliabilityScore}/5</div></div>
+            <div className="stk"><div className="k">Evaluación comercial</div><div className="v">{yearsExperience} años · {formatMoney(opportunity)} · confiabilidad {reliabilityScore}/5</div></div>
             <div className="stk"><div className="k">Autorización de datos</div><div className="v" style={{ color: 'var(--green-deep)' }}>Firmada ✓</div></div>
           </div>
 
@@ -395,48 +444,77 @@ export function CreditStudyPage() {
 
           <div className="sectitle">Evaluación comercial</div>
 
-          <div className="field">
-            <label>¿Cuántos años de experiencia tiene en el mercado?</label>
+          <FormSummary
+            pending={step1a.pendingKeys.map((k) => ({ key: k, label: LABELS_1A[k] }))}
+            errors={step1a.invalidKeys.map((k) => ({ key: k, label: LABELS_1A[k], message: step1a.errors[k] }))}
+          />
+
+          <FormField
+            id="credit-years-experience"
+            label="¿Cuántos años de experiencia tiene en el mercado?"
+            required
+            status={step1a.status.yearsExperience}
+            error={step1a.errors.yearsExperience}
+            help="Mide la trayectoria del negocio."
+          >
             <input
+              id="credit-years-experience"
               className="inp"
               type="number"
               min="0"
-              max="100"
               step="1"
               inputMode="numeric"
               value={yearsExperience}
-              onChange={(e) => setYearsExperience(e.target.value.replace(/[^0-9]/g, ''))}
+              onChange={(e) => {
+                setYearsExperience(e.target.value.replace(/[^0-9]/g, ''));
+                step1a.touch('yearsExperience');
+              }}
+              onBlur={() => step1a.touch('yearsExperience')}
               placeholder="Ej. 8"
+              aria-describedby="credit-years-experience-help"
             />
-            <div className="help">Mide la trayectoria del negocio.</div>
-          </div>
+          </FormField>
 
-          <div className="field">
-            <label>¿Cuál es el valor de la oportunidad que ve en el cliente?</label>
-            <input
-              className="inp"
-              type="number"
-              min="0"
-              step="1000"
-              inputMode="numeric"
+          <FormField
+            id="credit-opportunity-value"
+            label="¿Cuál es el valor de la oportunidad que ve en el cliente?"
+            required
+            status={step1a.status.opportunityValue}
+            error={step1a.errors.opportunityValue}
+            help="Monto en pesos. Puedes escribir centavos."
+          >
+            <CurrencyInput
+              id="credit-opportunity-value"
               value={opportunityValue}
-              onChange={(e) => setOpportunityValue(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="Ej. 5000000"
+              onChange={(raw) => {
+                setOpportunityValue(raw);
+                step1a.touch('opportunityValue');
+              }}
+              onBlur={() => step1a.touch('opportunityValue')}
+              placeholder="Ej. 5.000.000"
             />
-            <div className="help">Monto en pesos, sin decimales.</div>
-          </div>
+          </FormField>
 
-          <div className="field">
-            <label>De 1 a 5, ¿qué tan confiable le parece este crédito?</label>
+          <FormField
+            id="credit-reliability-score"
+            label="De 1 a 5, ¿qué tan confiable le parece este crédito?"
+            required
+            status={step1a.status.reliabilityScore}
+            error={step1a.errors.reliabilityScore}
+            help="1 = no va a pagar, 5 = va a pagar. Registra el juicio del asesor que conoce al cliente."
+          >
             <ScaleInput
+              id="credit-reliability-score"
               value={reliabilityScore}
-              onChange={setReliabilityScore}
+              onChange={(v) => {
+                setReliabilityScore(v);
+                step1a.touch('reliabilityScore');
+              }}
               lowLabel="1 · No va a pagar"
               highLabel="5 · Va a pagar"
               ariaLabel="Qué tan confiable le parece este crédito"
-              tooltip="1 = no va a pagar, 5 = va a pagar. Registra el juicio del asesor que conoce al cliente."
             />
-          </div>
+          </FormField>
         </div>
 
         <div className="action-bar credit-actions">
@@ -445,7 +523,13 @@ export function CreditStudyPage() {
               Continuar
               <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            <div className="bhelp">Responde las 3 preguntas para continuar</div>
+            <div className="bhelp">
+              {step1a.pendingKeys.length > 0
+                ? `Faltan ${step1a.pendingKeys.length} pregunta${step1a.pendingKeys.length === 1 ? '' : 's'}`
+                : step1a.invalidKeys.length > 0
+                  ? 'Corrige los errores para continuar'
+                  : 'Listo para continuar'}
+            </div>
           </div>
         </div>
       </div>
@@ -461,8 +545,12 @@ export function CreditStudyPage() {
 
         <div className="sectitle">Identificación del cliente</div>
 
-        <div className="field">
-          <label>Tipo de persona</label>
+        <FormSummary
+          pending={step1b.pendingKeys.map((k) => ({ key: k, label: LABELS_1B[k] }))}
+          errors={step1b.invalidKeys.map((k) => ({ key: k, label: LABELS_1B[k], message: step1b.errors[k] }))}
+        />
+
+        <FormField label="Tipo de persona" help="Determina si se buscan cédulas o NITs en el registro de clientes.">
           <div className="radio-group">
             <label className="radio">
               <input
@@ -483,65 +571,68 @@ export function CreditStudyPage() {
               <span>Jurídica</span>
             </label>
           </div>
-          <div className="help">Determina si se buscan cédulas o NITs en el registro de clientes.</div>
-        </div>
+        </FormField>
 
-        <div className="field">
-          <label>
-            {juridica ? "NIT (completo, con DV, sin '-')" : "Número de identificación (sin DV ni '-')"}{' '}
-            <span style={{ color: 'var(--faint)', fontWeight: 600 }}>
-              {digits.length < 3 ? 'Digita 3+ dígitos' : searching ? 'Consultando…' : client ? 'Encontrado' : results.length > 0 ? `${results.length} coincidencia(s)` : 'Sin registro'}
-            </span>
-          </label>
+        <FormField
+          id="credit-nit"
+          label={
+            <>
+              {juridica ? "NIT (completo, con DV, sin '-')" : "Número de identificación (sin DV ni '-')"}{' '}
+              <span style={{ color: 'var(--faint)', fontWeight: 600 }}>
+                {digits.length < 3 ? 'Digita 3+ dígitos' : searching ? 'Consultando…' : client ? 'Encontrado' : results.length > 0 ? `${results.length} coincidencia(s)` : 'Sin registro'}
+              </span>
+            </>
+          }
+          required
+          status={step1b.status.nit}
+          error={step1b.errors.nit}
+          help={
+            personType === 'juridica'
+              ? "NIT completo, con su dígito de verificación (DV) al final y sin '-'. La búsqueda inicia desde los 3 dígitos."
+              : "Número de cédula del cliente, solo dígitos: sin DV ni '-'. La búsqueda inicia desde los 3 dígitos."
+          }
+        >
           <input
+            id="credit-nit"
             className="inp"
             inputMode="numeric"
             maxLength={17}
             value={nit}
             onChange={(e) => {
               setNit(sanitizeNitInput(e.target.value));
-              setNitTouched(true);
+              step1b.touch('nit');
             }}
-            onBlur={() => setNitTouched(true)}
+            onBlur={() => step1b.touch('nit')}
             placeholder={juridica ? 'Ej. 9014902765' : 'Ej. 11276427'}
-            style={nitError ? { borderColor: '#e11225' } : undefined}
           />
-          <div className="help">
-            {nitError ? (
-              <span style={{ color: '#c62828', fontWeight: 600 }}>{nitError}</span>
-            ) : (
-              personType === 'juridica'
-                ? "NIT completo, con su dígito de verificación (DV) al final y sin '-'. La búsqueda inicia desde los 3 dígitos."
-                : "Número de cédula del cliente, solo dígitos: sin DV ni '-'. La búsqueda inicia desde los 3 dígitos."
-            )}
-          </div>
-        </div>
+        </FormField>
 
-        <div className="field">
-          <label>{juridica ? 'Confirmación de NIT' : 'Confirmación del número de identificación'}</label>
+        <FormField
+          id="credit-nit-confirm"
+          label={juridica ? 'Confirmación de NIT' : 'Confirmación del número de identificación'}
+          required
+          status={step1b.status.nitConfirm}
+          error={step1b.errors.nitConfirm}
+          help={
+            juridica
+              ? "Repite el NIT completo, con DV y sin '-', para confirmar que no hay errores de digitación."
+              : "Repite el número de identificación, sin DV ni '-', para confirmar que no hay errores de digitación."
+          }
+        >
           <input
+            id="credit-nit-confirm"
             className="inp"
             inputMode="numeric"
             maxLength={17}
             value={nitConfirm}
             onChange={(e) => {
               setNitConfirm(sanitizeNitInput(e.target.value));
-              setConfirmTouched(true);
+              step1b.touch('nitConfirm');
             }}
-            onBlur={() => setConfirmTouched(true)}
+            onBlur={() => step1b.touch('nitConfirm')}
             placeholder={juridica ? 'Ej. 9014902765' : 'Ej. 11276427'}
-            style={confirmError ? { borderColor: '#e11225' } : undefined}
           />
-          <div className="help">
-            {confirmError ? (
-              <span style={{ color: '#c62828', fontWeight: 600 }}>{confirmError}</span>
-            ) : (
-              juridica
-                ? "Repite el NIT completo, con DV y sin '-', para confirmar que no hay errores de digitación."
-                : "Repite el número de identificación, sin DV ni '-', para confirmar que no hay errores de digitación."
-            )}
-          </div>
-        </div>
+        </FormField>
 
         {digits.length < 3 && (
           <div className="empty" style={{ background: '#fff', border: '1.5px dashed #dbe4ef', borderRadius: 16, textAlign: 'center', padding: '26px 16px', marginBottom: 13 }}>
@@ -581,7 +672,7 @@ export function CreditStudyPage() {
               <div className="stk"><div className="k">Tipo de persona</div><div className="v">{personType === 'juridica' ? 'Jurídica' : 'Natural'}</div></div>
               <div className="stk"><div className="k">{juridica ? 'NIT' : 'Cédula'}</div><div className="v">{client.documentNumber}</div></div>
               {client.city && <div className="stk"><div className="k">Ciudad</div><div className="v">{client.city}</div></div>}
-              <button className="btn btn-ghost" style={{ marginTop: 12, height: 44 }} onClick={() => { setClient(null); setNit(''); setNitConfirm(''); setNitTouched(false); setConfirmTouched(false); }}>
+              <button className="btn btn-ghost" style={{ marginTop: 12, height: 44 }} onClick={() => { setClient(null); setNit(''); setNitConfirm(''); }}>
                 Cambiar cliente
               </button>
             </div>
@@ -624,7 +715,13 @@ export function CreditStudyPage() {
             {submitting ? 'Validando…' : 'Revisar solicitud'}
             <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
-          <div className="bhelp">Se habilita al validar el {idName}, confirmarlo y firmar la autorización de datos (no hace falta que el cliente esté registrado). Antes de enviar verás la solicitud completa.</div>
+          <div className="bhelp">
+            {step1b.pendingKeys.length > 0
+              ? `Faltan ${step1b.pendingKeys.length} dato${step1b.pendingKeys.length === 1 ? '' : 's'} para continuar`
+              : step1b.invalidKeys.length > 0
+                ? 'Corrige los errores para continuar'
+                : `Se habilita al validar el ${idName}, confirmarlo y firmar la autorización de datos.`}
+          </div>
         </div>
       </div>
 
@@ -637,6 +734,7 @@ export function CreditStudyPage() {
           onConfirm={(data) => {
             setSignatureData(data);
             setShowConsent(false);
+            step1b.touch('signature');
           }}
         >
           El cliente autoriza a la empresa a tratar sus datos personales y a consultar centrales de riesgo. La
@@ -656,7 +754,7 @@ export function CreditStudyPage() {
               riesgo. La firma queda archivada como documento del expediente.
             </p>
           </div>
-          <SignaturePad onChange={setSignatureData} />
+          <SignaturePad onChange={(data) => { setSignatureData(data); step1b.touch('signature'); }} />
           {consentSigned && (
             <img className="sigthumb" src={signatureData as string} alt="Firma registrada" />
           )}

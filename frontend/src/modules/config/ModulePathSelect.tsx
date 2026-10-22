@@ -1,6 +1,7 @@
 import { MODULES, FrontendModule, isRegisteredPath, staticPaths } from '../registry';
 
 interface Props {
+  id?: string;
   value: string;
   onChange: (path: string, owner: FrontendModule | undefined) => void;
   /** Texto de la opción vacía (ej. variantes: "Por defecto: del módulo"). Sin él, la opción vacía es un placeholder. */
@@ -13,14 +14,14 @@ interface Props {
  * registrado (dato previo al registro) se muestra igualmente, marcado, para
  * no perderlo al editar.
  */
-export function ModulePathSelect({ value, onChange, emptyLabel }: Props) {
+export function ModulePathSelect({ id, value, onChange, emptyLabel }: Props) {
   const unregistered = value !== '' && !isRegisteredPath(value);
   const ownerOf = (path: string) => MODULES.find((m) => staticPaths(m).includes(path));
 
   return (
     <>
       <div className="sel">
-        <select value={value} onChange={(e) => onChange(e.target.value, ownerOf(e.target.value))}>
+        <select id={id} value={value} onChange={(e) => onChange(e.target.value, ownerOf(e.target.value))}>
           <option value="" disabled={!emptyLabel}>{emptyLabel ?? 'Elegí una pantalla…'}</option>
           {unregistered && <option value={value}>⚠ {value} (no registrada)</option>}
           {MODULES.map((m) => (

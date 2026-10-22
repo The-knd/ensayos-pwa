@@ -445,7 +445,61 @@ En desarrollo, `validateRegistry()` **rompe el arranque** si:
 Las rutas que **no** son módulos (`/`, `/login`, `/home`, `/profile`, `/global-config`, `/test`, `*`)
 siguen escritas a mano en [App.tsx](frontend/src/App.tsx).
 
-### 6.4 Resultado esperado
+### 6.4 Formularios y validación
+
+Los formularios deben seguir el estándar compartido para indicar campos obligatorios,
+errores y campos faltantes:
+
+- Envolver cada campo en `<FormField>` (`frontend/src/shared/components/FormField.tsx`).
+- Marcar como `required` los obligatorios; esto pinta el asterisco (`*`) y el borde
+  ámbar mientras estén vacíos.
+- Usar `useFieldErrors` (`frontend/src/shared/validation/useFieldErrors.ts`) para el
+  estado `touched` y los mensajes de error por campo.
+- Mostrar `<FormSummary>` cerca del botón de envío; lista errores y campos pendientes
+  y permite saltar al campo con el foco.
+- En el `onSubmit` llamar siempre a `fields.touchAll()` y retornar si `!fields.isValid`.
+- Dar `id` al control para que `FormSummary` pueda hacer foco y scroll.
+
+Ejemplo mínimo:
+
+```tsx
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
+
+const fields = useFieldErrors({
+  values: { email, password },
+  required: ['email', 'password'],
+  validate: (values) => ({
+    email: EMAIL_RE.test(String(values.email).trim()) ? '' : 'Ingrese un correo válido',
+    password: values.password ? '' : 'Ingrese la contraseña',
+  }),
+});
+
+const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault();
+  fields.touchAll();
+  if (!fields.isValid) return;
+  // … envío …
+};
+
+<form onSubmit={handleSubmit}>
+  <FormSummary
+    pending={fields.pendingKeys.map((k) => ({ key: k, label: LABELS[k] }))}
+    errors={fields.invalidKeys.map((k) => ({ key: k, label: LABELS[k], message: fields.errors[k] }))}
+  />
+  <FormField id="login-email" label="Email" required status={fields.status.email} error={fields.errors.email}>
+    <input id="login-email" className="inp" value={email} onChange={…} onBlur={() => fields.touch('email')} />
+  </FormField>
+  …
+</form>
+```
+
+Para montos en pesos usar `<CurrencyInput>` (`frontend/src/shared/components/CurrencyInput.tsx`):
+muestra el símbolo `$` fijo, separadores de miles y admite centavos. Emite la string
+numérica normalizada (`"5000000.50"`) para que el consumidor pueda hacer `Number(value)`.
+
+### 6.5 Resultado esperado
 
 ```bash
 cd frontend && npm run build    # tsc + vite build sin errores
@@ -453,7 +507,7 @@ npm run lint                    # 0 errores
 npm run dev                     # http://localhost:5173 sin error del registro en consola
 ```
 
-Antes del Paso 6, `/proveedores` muestra la página de **acceso denegado** (no 404).
+Antes del Paso 7, `/proveedores` muestra la página de **acceso denegado** (no 404).
 
 ---
 

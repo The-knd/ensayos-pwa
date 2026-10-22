@@ -3,8 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AddressBuilderModal } from '../../shared/components/AddressBuilderModal';
 import { AppBar } from '../../shared/components/AppBar';
 import { CreditStepper } from '../../shared/components/CreditStepper';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
 import { httpClient } from '../../shared/api/httpClient';
 import { useTheme } from '../../shared/theme/ThemeContext';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { resumePath, statusMeta } from './creditStatus';
 
 interface SignCredit {
@@ -23,14 +26,12 @@ interface SignCredit {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?\d{7,15}$/;
 
-/** Mismas reglas que SignCreditDto en el backend; '' si el campo es válido. */
-function contactErrors(email: string, phone: string, address: string) {
-  return {
-    email: EMAIL_RE.test(email.trim()) ? '' : 'Ingrese un correo válido',
-    phone: PHONE_RE.test(phone.replace(/[\s()-]/g, '')) ? '' : 'Entre 7 y 15 dígitos',
-    address: address.trim().length >= 5 ? '' : 'Ingrese la dirección completa',
-  };
-}
+const LABELS = {
+  email: 'Correo electrónico',
+  phone: 'Teléfono de contacto',
+  address: 'Dirección',
+  confirm: 'Confirmación para firmar',
+};
 
 export function CreditSignPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,7 +44,6 @@ export function CreditSignPage() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [addrModal, setAddrModal] = useState(false);
-  const [touched, setTouched] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -55,12 +55,22 @@ export function CreditSignPage() {
       .catch((err: any) => setError(err?.response?.data?.message?.message || 'No se pudo cargar el crédito'));
   }, [id]);
 
-  const errors = contactErrors(email, phone, address);
-  const contactValid = !errors.email && !errors.phone && !errors.address;
+  const fields = useFieldErrors({
+    values: { email, phone, address, confirm },
+    required: ['email', 'phone', 'address', 'confirm'],
+    validate: (values) => ({
+      email: values.email && EMAIL_RE.test(String(values.email).trim()) ? '' : 'Ingrese un correo válido',
+      phone: values.phone && PHONE_RE.test(String(values.phone).replace(/[\s()-]/g, '')) ? '' : 'Entre 7 y 15 dígitos',
+      address: values.address && String(values.address).trim().length >= 5 ? '' : 'Ingrese la dirección completa',
+      confirm: values.confirm ? '' : 'Debe confirmar para enviar a firma',
+    }),
+  });
+
+  const contactValid = fields.isValid;
 
   const sign = async () => {
     if (!id) return;
-    setTouched(true);
+    fields.touchAll();
     if (!contactValid) return;
     setBusy(true);
     setError('');
@@ -139,50 +149,76 @@ export function CreditSignPage() {
           <div className="stk"><div className="k">Cupo pre-aprobado</div><div className="v" style={{ color: 'var(--green-deep)' }}>${Number(credit.approvedLimit).toLocaleString('es-CO')}</div></div>
         </div>
 
-        <div className="field" style={{ marginBottom: 10 }}>
-          <label>Correo electrónico</label>
+        <FormSummary
+          pending={fields.pendingKeys.map((k) => ({ key: k, label: LABELS[k] }))}
+          errors={fields.invalidKeys.map((k) => ({ key: k, label: LABELS[k], message: fields.errors[k] }))}
+        />
+
+        <FormField
+          id="sign-email"
+          label="Correo electrónico"
+          required
+          status={fields.status.email}
+          error={fields.errors.email}
+          help="Correo donde llegarán los documentos para firmar."
+        >
           <input
+            id="sign-email"
             className="inp"
             type="email"
             inputMode="email"
             autoComplete="off"
-            placeholder="* correo@cliente.com"
+            placeholder="correo@cliente.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); fields.touch('email'); }}
+            onBlur={() => fields.touch('email')}
           />
-          {touched && errors.email && <p style={{ color: '#c62828', fontSize: 11.5, fontWeight: 600, margin: '4px 2px 0' }}>{errors.email}</p>}
-        </div>
+        </FormField>
 
-        <div className="field" style={{ marginBottom: 10 }}>
-          <label>Teléfono de contacto</label>
+        <FormField
+          id="sign-phone"
+          label="Teléfono de contacto"
+          required
+          status={fields.status.phone}
+          error={fields.errors.phone}
+          help="Celular o fijo de contacto."
+        >
           <input
+            id="sign-phone"
             className="inp"
             type="tel"
             inputMode="tel"
             autoComplete="off"
-            placeholder="* Celular o fijo"
+            placeholder="Celular o fijo"
             value={phone}
-            onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s()-]/g, ''))}
+            onChange={(e) => { setPhone(e.target.value.replace(/[^\d+\s()-]/g, '')); fields.touch('phone'); }}
+            onBlur={() => fields.touch('phone')}
           />
-          {touched && errors.phone && <p style={{ color: '#c62828', fontSize: 11.5, fontWeight: 600, margin: '4px 2px 0' }}>{errors.phone}</p>}
-        </div>
+        </FormField>
 
-        <div className="field" style={{ marginBottom: 12 }}>
-          <label>Dirección</label>
+        <FormField
+          id="sign-address"
+          label="Dirección"
+          required
+          status={fields.status.address}
+          error={fields.errors.address}
+          help="Escriba la dirección o use el constructor."
+        >
           <div className="inp-row inset">
             <input
+              id="sign-address"
               className="inp"
               autoComplete="off"
-              placeholder="* Escriba la dirección o use el constructor"
+              placeholder="Escriba la dirección o use el constructor"
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(e) => { setAddress(e.target.value); fields.touch('address'); }}
+              onBlur={() => fields.touch('address')}
             />
             <button className="addr-btn" type="button" onClick={() => setAddrModal(true)} aria-label="Construir dirección">
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><circle cx="12" cy="10" r="2.2" stroke="currentColor" strokeWidth="2" /></svg>
             </button>
           </div>
-          {touched && errors.address && <p style={{ color: '#c62828', fontSize: 11.5, fontWeight: 600, margin: '4px 2px 0' }}>{errors.address}</p>}
-        </div>
+        </FormField>
 
         <div className="doc">
           <div className="di">
@@ -195,13 +231,23 @@ export function CreditSignPage() {
           <button className="docbtn">Ver</button>
         </div>
 
-        <div
-          className={`check ${confirm ? 'on' : ''}`}
-          onClick={() => setConfirm((v) => !v)}
+        <FormField
+          id="sign-confirm"
+          label="Confirmación para firmar"
+          required
+          status={fields.status.confirm}
+          error={fields.errors.confirm}
         >
-          <span className="bx"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
-          <p>Confirmo que la información de contacto es correcta y <span>acepto firmar</span> el pagaré y la carta de instrucciones.</p>
-        </div>
+          <div
+            id="sign-confirm"
+            tabIndex={-1}
+            className={`check ${confirm ? 'on' : ''}`}
+            onClick={() => { setConfirm((v) => !v); fields.touch('confirm'); }}
+          >
+            <span className="bx"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+            <p>Confirmo que la información de contacto es correcta y <span>acepto firmar</span> el pagaré y la carta de instrucciones.</p>
+          </div>
+        </FormField>
 
         {error && <p style={{ color: '#c62828', fontSize: 12, margin: '10px 2px' }}>{error}</p>}
 

@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { httpClient } from '../../shared/api/httpClient';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
 import { useBackTarget } from '../../shared/layout/TopBarContext';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { sanitizeDocumentNumber } from '../../shared/utils/validators';
+
+const LABELS = {
+  fullName: 'Nombre / Razón social',
+  documentNumber: 'Documento',
+};
 
 export function EditClientPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +21,15 @@ export function EditClientPage() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const fields = useFieldErrors({
+    values: { fullName: form.fullName || '', documentNumber: form.documentNumber || '' },
+    required: ['fullName', 'documentNumber'],
+    validate: (values) => ({
+      fullName: values.fullName ? '' : 'El nombre es obligatorio',
+      documentNumber: values.documentNumber ? '' : 'El documento es obligatorio',
+    }),
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -46,6 +63,8 @@ export function EditClientPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
+    fields.touchAll();
+    if (!fields.isValid) return;
     setBusy(true);
     setSaved(false);
     setError('');
@@ -102,15 +121,43 @@ export function EditClientPage() {
           <p>Actualiza la información del cliente. Los cambios se reflejan de inmediato en el registro.</p>
         </div>
 
+        <FormSummary
+          pending={fields.pendingKeys.map((k) => ({ key: k, label: LABELS[k] }))}
+          errors={fields.invalidKeys.map((k) => ({ key: k, label: LABELS[k], message: fields.errors[k] }))}
+        />
+
         <div className="sec">Datos básicos</div>
-        <div className="field">
-          <label>* Nombre / Razón social</label>
-          <input className="inp" value={form.fullName} onChange={(e) => set('fullName', e.target.value)} required />
-        </div>
-        <div className="field">
-          <label>{form.documentType === 'nit' ? "* NIT completo, con DV y sin '-'" : "* Documento (sin '-')"}</label>
-          <input className="inp" value={form.documentNumber} onChange={(e) => set('documentNumber', sanitizeDocumentNumber(e.target.value))} maxLength={20} required />
-        </div>
+        <FormField
+          id="edit-client-full-name"
+          label="Nombre / Razón social"
+          required
+          status={fields.status.fullName}
+          error={fields.errors.fullName}
+        >
+          <input
+            id="edit-client-full-name"
+            className="inp"
+            value={form.fullName}
+            onChange={(e) => { set('fullName', e.target.value); fields.touch('fullName'); }}
+            onBlur={() => fields.touch('fullName')}
+          />
+        </FormField>
+        <FormField
+          id="edit-client-document-number"
+          label={form.documentType === 'nit' ? "NIT completo, con DV y sin '-'" : "Documento (sin '-')"}
+          required
+          status={fields.status.documentNumber}
+          error={fields.errors.documentNumber}
+        >
+          <input
+            id="edit-client-document-number"
+            className="inp"
+            value={form.documentNumber}
+            onChange={(e) => { set('documentNumber', sanitizeDocumentNumber(e.target.value)); fields.touch('documentNumber'); }}
+            onBlur={() => fields.touch('documentNumber')}
+            maxLength={20}
+          />
+        </FormField>
         <div className="row2">
           <div className="field">
             <label>Teléfono</label>

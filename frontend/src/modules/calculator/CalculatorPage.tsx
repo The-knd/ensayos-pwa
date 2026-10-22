@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { httpClient } from '../../shared/api/httpClient';
+import { FormField } from '../../shared/components/FormField';
+import { FormSummary } from '../../shared/components/FormSummary';
+import { useFieldErrors } from '../../shared/validation/useFieldErrors';
 import { useAuth } from '../auth/AuthContext';
 
 interface SumResponse {
@@ -24,8 +27,19 @@ export function CalculatorPage() {
   const canSum = perms.includes('calculator.sumar');
   const canRestar = perms.includes('calculator.restar');
 
+  const fields = useFieldErrors({
+    values: { a, b },
+    required: ['a', 'b'],
+    validate: (values) => ({
+      a: values.a && !Number.isNaN(Number(values.a)) ? '' : 'Ingrese un número válido',
+      b: values.b && !Number.isNaN(Number(values.b)) ? '' : 'Ingrese un número válido',
+    }),
+  });
+
   const handleSubmit = async (op: 'sum' | 'restar', e: React.FormEvent) => {
     e.preventDefault();
+    fields.touchAll();
+    if (!fields.isValid) return;
     setError('');
     setResult(null);
     setBusy(true);
@@ -48,32 +62,49 @@ export function CalculatorPage() {
 
       <div className="s2-body">
         <div className="info-card" style={{ padding: 20 }}>
-          <form>
+          <form onSubmit={(e) => handleSubmit('sum', e)}>
+            <FormSummary
+              pending={fields.pendingKeys.map((k) => ({ key: k, label: `Valor ${k.toUpperCase()}` }))}
+              errors={fields.invalidKeys.map((k) => ({ key: k, label: `Valor ${k.toUpperCase()}`, message: fields.errors[k] }))}
+            />
+
             <div className="row2">
-              <div className="field">
-                <label>A</label>
+              <FormField
+                id="calc-a"
+                label="A"
+                required
+                status={fields.status.a}
+                error={fields.errors.a}
+              >
                 <input
+                  id="calc-a"
                   className="inp"
                   type="number"
                   step="any"
                   inputMode="decimal"
                   value={a}
-                  onChange={(e) => setA(e.target.value)}
-                  required
+                  onChange={(e) => { setA(e.target.value); fields.touch('a'); }}
+                  onBlur={() => fields.touch('a')}
                 />
-              </div>
-              <div className="field">
-                <label>B</label>
+              </FormField>
+              <FormField
+                id="calc-b"
+                label="B"
+                required
+                status={fields.status.b}
+                error={fields.errors.b}
+              >
                 <input
+                  id="calc-b"
                   className="inp"
                   type="number"
                   step="any"
                   inputMode="decimal"
                   value={b}
-                  onChange={(e) => setB(e.target.value)}
-                  required
+                  onChange={(e) => { setB(e.target.value); fields.touch('b'); }}
+                  onBlur={() => fields.touch('b')}
                 />
-              </div>
+              </FormField>
             </div>
 
             {error && <p style={{ color: '#b00020', fontSize: 12, marginTop: 8 }}>{error}</p>}
@@ -83,7 +114,7 @@ export function CalculatorPage() {
             ) : (
               <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                 {canSum && (
-                  <button type="button" onClick={(e) => handleSubmit('sum', e)} className="btn btn-primary" disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
+                  <button type="submit" className="btn btn-primary" disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>
                     Sumar
                   </button>
                 )}
